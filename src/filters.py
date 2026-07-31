@@ -1,8 +1,9 @@
 """
-Market filtering utilities.
+Filtering utilities.
 
-This module contains reusable functions for filtering Polymarket
-markets based on the trading bot's area of interest.
+This module contains reusable functions for filtering both Polymarket
+markets and intelligence events based on the trading bot's area of
+interest.
 """
 
 import re
@@ -10,59 +11,124 @@ import re
 from src.config import GEOPOLITICAL_KEYWORDS
 
 
-def is_geopolitical_market(market):
+def _contains_keyword(text: str) -> bool:
     """
-    Determine whether a market is relevant to the trading strategy.
-
-    A market is considered relevant if one of the configured
-    geopolitical keywords appears in the market question or
-    the title of one of its associated events.
+    Determine whether the supplied text contains one of the configured
+    geopolitical keywords.
 
     Args:
-        market (dict):
-            A market returned by the Polymarket API.
+        text:
+            Text to search.
 
     Returns:
-        bool:
-            True if the market matches at least one keyword.
+        True if at least one keyword is found.
     """
 
-    # Start with the market question
-    search_text = market.get("question", "")
+    text = text.lower()
 
-    # Include the titles of any associated events
-    events = market.get("events", [])
-
-    for event in events:
-        search_text += f" {event.get('title', '')}"
-
-    search_text = search_text.lower()
-
-    # Check for whole-word keyword matches
     for keyword in GEOPOLITICAL_KEYWORDS:
         pattern = r"\b" + re.escape(keyword.lower()) + r"\b"
 
-        if re.search(pattern, search_text):
+        if re.search(pattern, text):
             return True
 
     return False
 
 
-def filter_geopolitical_markets(markets):
+def is_geopolitical_market(market: dict) -> bool:
     """
-    Filter a list of markets to retain only geopolitical ones.
+    Determine whether a market is relevant to the trading strategy.
 
     Args:
-        markets (list[dict]):
-            Markets returned by the API.
+        market:
+            A market returned by the Polymarket API.
 
     Returns:
-        list[dict]:
-            Only markets matching the configured keywords.
+        True if the market matches at least one keyword.
+    """
+
+    search_text = market.get("question", "")
+
+    events = market.get("events", [])
+
+    for event in events:
+        search_text += f" {event.get('title', '')}"
+
+    return _contains_keyword(search_text)
+
+
+def filter_geopolitical_markets(
+    markets: list[dict]
+) -> list[dict]:
+    """
+    Filter a list of markets.
+
+    Args:
+        markets:
+            Markets returned by the Polymarket API.
+
+    Returns:
+        Only geopolitical markets.
     """
 
     return [
         market
         for market in markets
         if is_geopolitical_market(market)
+    ]
+
+
+def is_relevant_event(event: dict) -> bool:
+    """
+    Determine whether a GDELT event is relevant.
+
+    The filter examines both structured geographic information and
+    descriptive text.
+
+    Args:
+        event:
+            Raw event returned by GDELT.
+
+    Returns:
+        True if the event is considered relevant.
+    """
+
+    geo = event.get("geo", {})
+
+    search_text = " ".join(
+        filter(
+            None,
+            [
+                event.get("title"),
+                event.get("summary"),
+                event.get("category"),
+                event.get("subcategory"),
+                geo.get("country"),
+                geo.get("region"),
+                geo.get("continent"),
+            ],
+        )
+    )
+
+    return _contains_keyword(search_text)
+
+
+def filter_relevant_events(
+    events: list[dict]
+) -> list[dict]:
+    """
+    Filter a list of intelligence events.
+
+    Args:
+        events:
+            Raw GDELT events.
+
+    Returns:
+        Only events relevant to the trading bot.
+    """
+
+    return [
+        event
+        for event in events
+        if is_relevant_event(event)
     ]

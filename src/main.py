@@ -4,12 +4,13 @@ Application entry point.
 
 from src.api import PolymarketAPI
 from src.filters import filter_geopolitical_markets
-from src.utils import display_market
+from src.intelligence.pipeline import IntelligencePipeline
+from src.intelligence.providers.gdelt import GDELTProvider
 
 
-def main():
+def main() -> None:
     """
-    Run the application.
+    Run the trading bot.
     """
 
     print("Connecting to Polymarket...\n")
@@ -27,18 +28,71 @@ def main():
 
     print(f"Retrieved {len(markets)} active markets.")
 
-    filtered_markets = filter_geopolitical_markets(markets)
+    markets = filter_geopolitical_markets(markets)
 
     print(
-        f"Found {len(filtered_markets)} geopolitical markets.\n"
+        f"Found {len(markets)} geopolitical markets.\n"
     )
 
-    if not filtered_markets:
-        print("No matching markets were found.")
+    if not markets:
+        print("No geopolitical markets found.")
         return
 
-    for market in filtered_markets:
-        display_market(market)
+    print("Retrieving intelligence...\n")
+
+    pipeline = IntelligencePipeline(
+        GDELTProvider()
+    )
+
+    opportunities = pipeline.run(markets)
+
+    if not opportunities:
+        print("No trading opportunities found.")
+        return
+
+    print(
+        f"Found {len(opportunities)} trading opportunities.\n"
+    )
+
+    print("=" * 100)
+
+    for opportunity in opportunities:
+
+        print(
+            f"Event Score: {opportunity.event.score}"
+        )
+
+        print(
+            f"Match Score: {opportunity.match_score}"
+        )
+
+        print(
+            f"Country: {opportunity.event.event.country}"
+        )
+
+        print(
+            f"Category: {opportunity.event.event.category}"
+        )
+
+        print(
+            f"Event:"
+        )
+
+        print(
+            f"  {opportunity.event.event.title}"
+        )
+
+        print()
+
+        print(
+            f"Matched Market:"
+        )
+
+        print(
+            f"  {opportunity.market.get('question')}"
+        )
+
+        print("=" * 100)
 
 
 if __name__ == "__main__":

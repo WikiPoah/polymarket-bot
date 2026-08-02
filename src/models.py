@@ -6,8 +6,15 @@ application. These models provide a consistent interface between
 different parts of the system.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
+
+from src.intelligence.classification import (
+    EventType,
+    Region,
+    Topic,
+)
+from src.intelligence.outcomes import Outcome
 
 
 @dataclass(slots=True)
@@ -48,6 +55,14 @@ class GeoPoliticalEvent:
     source_url: str
     published_at: datetime
 
+    event_type: EventType = EventType.OTHER
+    outcome: Outcome = Outcome.OTHER
+    classified_region: Region = Region.UNKNOWN
+
+    topics: list[Topic] = field(default_factory=list)
+    actors: list[str] = field(default_factory=list)
+    countries: list[str] = field(default_factory=list)
+
 
 @dataclass(slots=True)
 class ScoredEvent:
@@ -64,12 +79,29 @@ class ScoredEvent:
 class TradingOpportunity:
     """
     Represents a potential trading opportunity.
-
-    A trading opportunity links one scored geopolitical event
-    to one Polymarket market together with the confidence that
-    they are related.
     """
 
     event: ScoredEvent
     market: dict
+
     match_score: int
+    confidence: float
+
+    match_reasons: list[str] = field(default_factory=list)
+
+
+@dataclass(slots=True)
+class ClassifiedMarket:
+    """
+    Represents a classified Polymarket market.
+    """
+
+    market: dict
+
+    event_type: EventType = EventType.OTHER
+    expected_outcome: Outcome = Outcome.OTHER
+    classified_region: Region = Region.UNKNOWN
+
+    topics: list[Topic] = field(default_factory=list)
+    actors: list[str] = field(default_factory=list)
+    countries: list[str] = field(default_factory=list)

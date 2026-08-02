@@ -1,128 +1,73 @@
 """
 Utilities for scoring geopolitical events.
-
-This module assigns each geopolitical event a relevance score
-used by the trading strategy.
 """
 
-from src.models import (
-    GeoPoliticalEvent,
-    ScoredEvent,
-)
+from src.intelligence.classification import EventType, Topic
+from src.models import GeoPoliticalEvent, ScoredEvent
 
-HIGH_PRIORITY_COUNTRIES = {
-    "Iran",
-    "Israel",
-    "Palestine",
-    "Russia",
-    "Ukraine",
-    "China",
-    "Taiwan",
-}
 
-MEDIUM_PRIORITY_COUNTRIES = {
-    "Lebanon",
-    "Syria",
-    "Jordan",
-    "Iraq",
-    "Yemen",
-    "Saudi Arabia",
-    "United Arab Emirates",
-    "Turkey",
-    "Belarus",
-}
-
-HIGH_PRIORITY_KEYWORDS = {
-    "missile",
-    "strike",
-    "attack",
-    "war",
-    "military",
-    "drone",
-    "nuclear",
-    "sanctions",
-    "ceasefire",
-    "hostages",
-    "hamas",
-    "hezbollah",
-    "houthi",
-    "iran",
-    "israel",
-    "gaza",
-    "ukraine",
-    "russia",
-    "taiwan",
-    "china",
-    "opec",
-    "oil",
-}
-
-HIGH_PRIORITY_CATEGORIES = {
-    "Explosions/Remote violence",
-    "Violence against civilians",
-    "Strategic developments",
+EVENT_TYPE_WEIGHTS = {
+    EventType.MILITARY_STRIKE: 35,
+    EventType.INVASION: 35,
+    EventType.MILITARY_EXERCISE: 25,
+    EventType.NUCLEAR: 30,
+    EventType.SANCTIONS: 25,
+    EventType.ENERGY: 20,
+    EventType.DIPLOMATIC: 15,
+    EventType.ELECTION: 10,
+    EventType.ECONOMIC: 10,
+    EventType.SHIPPING: 20,
+    EventType.TERRORISM: 30,
 }
 
 
-def score_event(
-    event: GeoPoliticalEvent,
-) -> ScoredEvent:
+TOPIC_WEIGHTS = {
+    Topic.MILITARY: 15,
+    Topic.NUCLEAR: 15,
+    Topic.ENERGY: 10,
+    Topic.SHIPPING: 10,
+    Topic.DIPLOMACY: 5,
+    Topic.POLITICS: 5,
+    Topic.ECONOMY: 5,
+}
+
+
+def score_event(event: GeoPoliticalEvent) -> int:
     """
-    Score a geopolitical event.
+    Calculate the relevance score for a geopolitical event.
     """
 
     score = 0
 
-    if event.country in HIGH_PRIORITY_COUNTRIES:
-        score += 30
+    score += EVENT_TYPE_WEIGHTS.get(event.event_type, 0)
 
-    elif event.country in MEDIUM_PRIORITY_COUNTRIES:
-        score += 20
+    for topic in event.topics:
+        score += TOPIC_WEIGHTS.get(topic, 0)
 
-    if event.category in HIGH_PRIORITY_CATEGORIES:
-        score += 25
+    score += len(event.actors) * 5
+    score += len(event.countries) * 5
 
-    title = event.title.lower()
+    if event.significance is not None:
+        score += int(event.significance * 20)
 
-    for keyword in HIGH_PRIORITY_KEYWORDS:
-        if keyword in title:
-            score += 10
+    if event.confidence is not None:
+        score += int(event.confidence * 10)
 
-    if (
-        event.market_sensitivity is not None
-        and event.market_sensitivity >= 0.75
-    ):
-        score += 15
-
-    if (
-        event.significance is not None
-        and event.significance >= 0.75
-    ):
-        score += 10
-
-    if (
-        event.confidence is not None
-        and event.confidence >= 0.75
-    ):
-        score += 10
-
-    score = min(score, 100)
-
-    return ScoredEvent(
-        event=event,
-        score=score,
-    )
+    return min(score, 100)
 
 
 def score_events(
     events: list[GeoPoliticalEvent],
 ) -> list[ScoredEvent]:
     """
-    Score and sort events.
+    Score and sort geopolitical events.
     """
 
     scored = [
-        score_event(event)
+        ScoredEvent(
+            event=event,
+            score=score_event(event),
+        )
         for event in events
     ]
 

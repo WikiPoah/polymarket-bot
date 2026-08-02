@@ -4,6 +4,8 @@ GDELT Cloud intelligence provider.
 Retrieves geopolitical events from the GDELT Cloud REST API.
 """
 
+import time
+
 import httpx
 
 from src.config import (
@@ -36,16 +38,6 @@ class GDELTProvider(IntelligenceProvider):
     ) -> list[GeoPoliticalEvent]:
         """
         Retrieve recent geopolitical events.
-
-        Args:
-            limit:
-                Maximum number of events to retrieve.
-
-            sort:
-                Sort order requested from GDELT.
-
-        Returns:
-            Parsed geopolitical events.
         """
 
         if not GDELT_API_KEY:
@@ -65,40 +57,57 @@ class GDELTProvider(IntelligenceProvider):
 
         url = f"{GDELT_API_URL}{self.ENDPOINT}"
 
-        try:
-            with httpx.Client(timeout=60) as client:
-                response = client.get(
-                    url,
-                    headers=headers,
-                    params=params,
-                )
+        last_error: Exception | None = None
 
-            response.raise_for_status()
+        for attempt in range(3):
 
-        except httpx.HTTPError as error:
-            raise IntelligenceProviderError(
-                "Failed to retrieve intelligence data."
-            ) from error
+            try:
 
-        data = response.json()
+                with httpx.Client(timeout=10) as client:
 
-        if not isinstance(data, dict):
-            raise IntelligenceProviderError(
-                "Unexpected response from GDELT."
-            )
+                    response = client.get(
+                        url,
+                        headers=headers,
+                        params=params,
+                    )
 
-        raw_events = data.get("data")
+                response.raise_for_status()
 
-        if not isinstance(raw_events, list):
-            raise IntelligenceProviderError(
-                "Response does not contain an event list."
-            )
+                data = response.json()
 
-        events: list[GeoPoliticalEvent] = []
+                if not isinstance(data, dict):
+                    raise IntelligenceProviderError(
+                        "Unexpected response from GDELT."
+                    )
 
-        for event in raw_events:
-            events.append(
-                parse_gdelt_event(event)
-            )
+                raw_events = data.get("data")
 
-        return events
+                if not isinstance(raw_events, list):
+                    raise IntelligenceProviderError(
+                        "Response does not contain an event list."
+                    )
+
+                events: list[GeoPoliticalEvent] = []
+
+                for event in raw_events:
+                    events.append(
+                        parse_gdelt_event(event)
+                    )
+
+                return events
+
+            except (
+                httpx.TimeoutException,
+                httpx.HTTPStatusError,
+                httpx.NetworkError,
+            ) as error:
+
+                last_error = error
+
+                if attempt < 2:
+                    time.sleep(2)
+                    continue
+
+        raise IntelligenceProviderError(
+            "Failed to retrieve intelligence data."
+        ) from last_error

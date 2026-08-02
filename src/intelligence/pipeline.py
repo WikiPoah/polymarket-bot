@@ -1,22 +1,17 @@
 """
 Intelligence pipeline.
 
-Coordinates retrieval, scoring and matching of geopolitical
-events against active Polymarket markets.
+Coordinates retrieval, classification, scoring and matching
+of geopolitical events against active Polymarket markets.
 """
 
-from src.intelligence.matcher import (
-    find_matching_markets,
-)
-from src.intelligence.provider import (
-    IntelligenceProvider,
-)
-from src.intelligence.scorer import (
-    score_events,
-)
-from src.models import (
-    TradingOpportunity,
-)
+from src.intelligence.classifier import EventClassifier
+from src.intelligence.market_classifier import MarketClassifier
+from src.intelligence.matcher import find_matching_markets
+from src.intelligence.outcome_classifier import OutcomeClassifier
+from src.intelligence.provider import IntelligenceProvider
+from src.intelligence.scorer import score_events
+from src.models import TradingOpportunity
 
 
 class IntelligencePipeline:
@@ -28,34 +23,34 @@ class IntelligencePipeline:
         self,
         provider: IntelligenceProvider,
     ) -> None:
-        """
-        Initialise the intelligence pipeline.
-
-        Args:
-            provider:
-                Intelligence provider.
-        """
 
         self._provider = provider
+        self._event_classifier = EventClassifier()
+        self._outcome_classifier = OutcomeClassifier()
+        self._market_classifier = MarketClassifier()
 
     def run(
         self,
         markets: list[dict],
     ) -> list[TradingOpportunity]:
-        """
-        Execute the complete intelligence pipeline.
-
-        Args:
-            markets:
-                Active Polymarket markets.
-
-        Returns:
-            Trading opportunities sorted by relevance.
-        """
 
         events = self._provider.fetch(limit=100)
 
-        scored_events = score_events(events)
+        classified_events = []
+
+        for event in events:
+
+            event = self._event_classifier.classify(event)
+            event = self._outcome_classifier.classify(event)
+
+            classified_events.append(event)
+
+        classified_markets = [
+            self._market_classifier.classify(market)
+            for market in markets
+        ]
+
+        scored_events = score_events(classified_events)
 
         opportunities: list[TradingOpportunity] = []
 
@@ -64,7 +59,7 @@ class IntelligencePipeline:
             opportunities.extend(
                 find_matching_markets(
                     scored_event,
-                    markets,
+                    classified_markets,
                 )
             )
 

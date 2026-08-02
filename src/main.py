@@ -67,6 +67,12 @@ def main() -> None:
         )
 
         print(
+            f"Confidence: {opportunity.confidence:.0%}"
+        )
+
+        print()
+
+        print(
             f"Country: {opportunity.event.event.country}"
         )
 
@@ -74,23 +80,28 @@ def main() -> None:
             f"Category: {opportunity.event.event.category}"
         )
 
-        print(
-            f"Event:"
-        )
+        print()
 
+        print("Event:")
         print(
             f"  {opportunity.event.event.title}"
         )
 
         print()
 
-        print(
-            f"Matched Market:"
-        )
-
+        print("Matched Market:")
         print(
             f"  {opportunity.market.get('question')}"
         )
+
+        if opportunity.match_reasons:
+
+            print()
+
+            print("Reasons:")
+
+            for reason in opportunity.match_reasons:
+                print(f"  - {reason}")
 
         print("=" * 100)
 

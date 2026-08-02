@@ -1,8 +1,12 @@
 """
-Utilities for matching geopolitical events to Polymarket markets.
+Utilities for matching geopolitical events to classified
+Polymarket markets.
 """
 
+from src.intelligence.classification import EventType, Region
+from src.intelligence.outcomes import Outcome
 from src.models import (
+    ClassifiedMarket,
     GeoPoliticalEvent,
     ScoredEvent,
     TradingOpportunity,
@@ -11,85 +15,139 @@ from src.models import (
 
 def calculate_match_score(
     event: GeoPoliticalEvent,
-    market: dict,
-) -> int:
+    market: ClassifiedMarket,
+) -> tuple[int, float, list[str]]:
     """
-    Estimate how closely an event matches a Polymarket market.
-
-    Args:
-        event:
-            Parsed geopolitical event.
-
-        market:
-            Market returned by the Polymarket API.
-
-    Returns:
-        Match score between 0 and 100.
+    Estimate how closely an event matches a classified market.
     """
 
     score = 0
+    reasons: list[str] = []
 
-    question = market.get("question", "").lower()
-    title = event.title.lower()
+    #
+    # Leadership markets require strong evidence.
+    #
 
-    if event.country and event.country.lower() in question:
-        score += 40
+    if market.event_type == EventType.LEADERSHIP:
 
-    if event.category.lower() in question:
-        score += 20
+        country_match = any(
+            country in market.countries
+            for country in event.countries
+        )
 
-    keywords = [
-        "iran",
-        "israel",
-        "gaza",
-        "palestine",
-        "ukraine",
-        "russia",
-        "china",
-        "taiwan",
-        "oil",
-        "opec",
-        "nuclear",
-        "missile",
-        "war",
-        "sanctions",
-        "ceasefire",
-    ]
+        actor_match = any(
+            actor in market.actors
+            for actor in event.actors
+        )
 
-    for keyword in keywords:
-        if keyword in title and keyword in question:
-            score += 10
+        outcome_match = (
+            event.outcome == market.expected_outcome
+            and event.outcome != Outcome.OTHER
+        )
 
-    return min(score, 100)
+        if not (
+            country_match
+            and (actor_match or outcome_match)
+        ):
+            return 0, 0.0, []
+
+    #
+    # Countries
+    #
+
+    for country in event.countries:
+        if country in market.countries:
+            score += 25
+            reasons.append(
+                f"Country: {country} (+25)"
+            )
+
+    #
+    # Outcome
+    #
+
+    if (
+        event.outcome != Outcome.OTHER
+        and event.outcome == market.expected_outcome
+    ):
+        score += 30
+        reasons.append(
+            f"Outcome: {event.outcome.name} (+30)"
+        )
+
+    #
+    # Event type
+    #
+
+    if (
+        event.event_type != EventType.OTHER
+        and event.event_type == market.event_type
+    ):
+        score += 15
+        reasons.append(
+            f"Event Type: {event.event_type.name} (+15)"
+        )
+
+    #
+    # Region
+    #
+
+    if (
+        event.classified_region != Region.UNKNOWN
+        and event.classified_region == market.classified_region
+    ):
+        score += 10
+        reasons.append(
+            f"Region: {event.classified_region.name} (+10)"
+        )
+
+    #
+    # Topics
+    #
+
+    for topic in event.topics:
+        if topic in market.topics:
+            score += 5
+            reasons.append(
+                f"Topic: {topic.name} (+5)"
+            )
+
+    #
+    # Actors
+    #
+
+    for actor in event.actors:
+        if actor in market.actors:
+            score += 20
+            reasons.append(
+                f"Actor: {actor} (+20)"
+            )
+
+    score = min(score, 100)
+
+    confidence = round(score / 100, 2)
+
+    return score, confidence, reasons
 
 
 def find_matching_markets(
     scored_event: ScoredEvent,
-    markets: list[dict],
-    minimum_score: int = 40,
+    markets: list[ClassifiedMarket],
+    minimum_score: int = 30,
 ) -> list[TradingOpportunity]:
     """
-    Find markets matching a scored geopolitical event.
-
-    Args:
-        scored_event:
-            Event to match.
-
-        markets:
-            Candidate Polymarket markets.
-
-        minimum_score:
-            Minimum acceptable match score.
-
-    Returns:
-        Trading opportunities ordered by match quality.
+    Find classified markets matching a scored event.
     """
 
     opportunities: list[TradingOpportunity] = []
 
     for market in markets:
 
-        match_score = calculate_match_score(
+        (
+            match_score,
+            confidence,
+            reasons,
+        ) = calculate_match_score(
             scored_event.event,
             market,
         )
@@ -99,13 +157,18 @@ def find_matching_markets(
             opportunities.append(
                 TradingOpportunity(
                     event=scored_event,
-                    market=market,
+                    market=market.market,
                     match_score=match_score,
+                    confidence=confidence,
+                    match_reasons=reasons,
                 )
             )
 
     opportunities.sort(
-        key=lambda opportunity: opportunity.match_score,
+        key=lambda opportunity: (
+            opportunity.match_score,
+            opportunity.event.score,
+        ),
         reverse=True,
     )
 

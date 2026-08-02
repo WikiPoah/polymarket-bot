@@ -72,6 +72,7 @@ class DashboardDataBuilder:
                     last_successful.completed_at if last_successful else None
                 ),
                 "recent_runs": [self._run_view(item) for item in statuses[-10:][::-1]],
+                "provider_freshness": latest.provider_details if latest else {},
             },
             "recent_activity": [
                 self._decision_view(decision) for decision in decisions[-10:][::-1]
@@ -107,6 +108,8 @@ class DashboardDataBuilder:
     def _decision_view(decision: PaperDecision) -> dict[str, Any]:
         return {
             "id": decision.id,
+            "run_id": decision.run_id,
+            "opportunity_id": decision.opportunity_id,
             "timestamp": decision.timestamp,
             "market_question": decision.market.get("question", ""),
             "decision": decision.decision,

@@ -2,7 +2,7 @@
 Tests for the intelligence provider interface and aggregation.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 
 import pytest
 
@@ -225,3 +225,19 @@ def test_client_continues_after_provider_error():
         "FakeProvider": "OK",
     }
     assert client.provider_errors == ["FailingProvider: Provider unavailable"]
+    assert client.provider_details["FailingProvider"]["status"] == "ERROR"
+
+
+def test_client_tracks_provider_data_freshness():
+    event = create_event("Fresh event")
+    client = IntelligenceClient([FakeProvider([event])])
+
+    client.fetch()
+
+    details = client.provider_details["FakeProvider"]
+    assert details["status"] == "OK"
+    assert details["last_successful_run"] is not None
+    assert details["last_data_received"] == event.published_at.replace(
+        tzinfo=timezone.utc,
+    ).isoformat()
+    assert details["event_age_seconds"] >= 0

@@ -4,6 +4,8 @@ Intelligence client.
 Coordinates one or more intelligence providers.
 """
 
+from datetime import datetime, timezone
+
 from src.intelligence.providers.base import (
     IntelligenceProvider,
 )
@@ -33,6 +35,10 @@ class IntelligenceClient:
         self._providers = providers
         self._provider_status: dict[str, str] = {}
         self._provider_errors: list[str] = []
+        self._provider_details: dict[str, dict] = {
+            type(provider).__name__: self._empty_provider_details()
+            for provider in providers
+        }
 
     @property
     def provider_status(self) -> dict[str, str]:
@@ -42,9 +48,26 @@ class IntelligenceClient:
     def provider_errors(self) -> list[str]:
         return list(self._provider_errors)
 
+    @property
+    def provider_details(self) -> dict[str, dict]:
+        return {name: dict(details) for name, details in self._provider_details.items()}
+
     def reset_status(self) -> None:
         self._provider_status.clear()
         self._provider_errors.clear()
+        for details in self._provider_details.values():
+            details["status"] = "UNKNOWN"
+            details["error"] = ""
+
+    @staticmethod
+    def _empty_provider_details() -> dict:
+        return {
+            "status": "UNKNOWN",
+            "last_successful_run": None,
+            "last_data_received": None,
+            "event_age_seconds": None,
+            "error": "",
+        }
 
     def fetch(
         self,
@@ -84,11 +107,22 @@ class IntelligenceClient:
             except IntelligenceProviderError as error:
                 self._provider_status[provider_name] = "ERROR"
                 message = f"{provider_name}: {error}"
+                details = self._provider_details.setdefault(
+                    provider_name, self._empty_provider_details()
+                )
+                details.update(status="ERROR", error=str(error))
                 if message not in self._provider_errors:
                     self._provider_errors.append(message)
                 continue
 
             self._provider_status.setdefault(provider_name, "OK")
+            now = datetime.now(timezone.utc)
+            details = self._provider_details.setdefault(
+                provider_name, self._empty_provider_details()
+            )
+            details["last_successful_run"] = now.isoformat()
+            if self._provider_status[provider_name] != "ERROR":
+                details.update(status="OK", error="")
 
             if provider_results:
                 if not all(
@@ -104,5 +138,21 @@ class IntelligenceClient:
                     )
 
                 results.extend(provider_results)
+                timestamps = [
+                    event.published_at
+                    for event in provider_results
+                    if isinstance(event.published_at, datetime)
+                ]
+                if timestamps:
+                    normalized = [
+                        value.replace(tzinfo=timezone.utc)
+                        if value.tzinfo is None else value.astimezone(timezone.utc)
+                        for value in timestamps
+                    ]
+                    latest = max(normalized)
+                    details["last_data_received"] = latest.isoformat()
+                    details["event_age_seconds"] = max(
+                        0.0, (now - latest).total_seconds()
+                    )
 
         return aggregate_events(results)

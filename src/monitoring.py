@@ -15,13 +15,21 @@ class RunStatus:
     decisions_generated: int = 0
     provider_status: dict[str, str] = field(default_factory=dict)
     errors: list[str] = field(default_factory=list)
+    run_id: str = ""
+    provider_details: dict[str, dict[str, Any]] = field(default_factory=dict)
+    record_version: int = 2
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
     @classmethod
     def from_dict(cls, values: dict[str, Any]) -> "RunStatus":
-        return cls(**values)
+        migrated = dict(values)
+        migrated.setdefault("run_id", "")
+        migrated.setdefault("provider_details", {})
+        migrated.setdefault("record_version", 1)
+        allowed = cls.__dataclass_fields__
+        return cls(**{key: value for key, value in migrated.items() if key in allowed})
 
 
 class SystemStatusStore:
@@ -42,6 +50,8 @@ class SystemStatusStore:
             payload = json.loads(self.path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
             return []
+        if isinstance(payload, dict):
+            payload = payload.get("records", [])
         if not isinstance(payload, list):
             return []
         statuses = []
@@ -59,7 +69,10 @@ class SystemStatusStore:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         temporary = self.path.with_suffix(f"{self.path.suffix}.tmp")
         temporary.write_text(
-            json.dumps([item.to_dict() for item in statuses], indent=2),
+            json.dumps(
+                {"version": 2, "records": [item.to_dict() for item in statuses]},
+                indent=2,
+            ),
             encoding="utf-8",
         )
         temporary.replace(self.path)

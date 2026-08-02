@@ -1,6 +1,7 @@
 """JSON decision history for paper trading."""
 
 import json
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from src.paper_trading.models import PaperDecision
@@ -13,6 +14,12 @@ class PaperTradingRecorder:
 
     def __init__(self, path: str | Path = "data/paper_trading_history.json") -> None:
         self.path = Path(path)
+        self.run_id = ""
+        self.duplicate_window = timedelta(0)
+
+    def begin_run(self, run_id: str, duplicate_window: timedelta) -> None:
+        self.run_id = run_id
+        self.duplicate_window = duplicate_window
 
     def load(self) -> list[PaperDecision]:
         if not self.path.exists():
@@ -21,6 +28,8 @@ class PaperTradingRecorder:
             payload = json.loads(self.path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
             return []
+        if isinstance(payload, dict):
+            payload = payload.get("records", [])
         if not isinstance(payload, list):
             return []
         decisions = []
@@ -38,17 +47,47 @@ class PaperTradingRecorder:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         temporary = self.path.with_suffix(f"{self.path.suffix}.tmp")
         temporary.write_text(
-            json.dumps([decision.to_dict() for decision in decisions], indent=2),
+            json.dumps(
+                {
+                    "version": 2,
+                    "records": [decision.to_dict() for decision in decisions],
+                },
+                indent=2,
+            ),
             encoding="utf-8",
         )
         temporary.replace(self.path)
 
-    def record(self, decision: StrategyDecision) -> PaperDecision:
-        paper_decision = PaperDecision.from_strategy_decision(decision)
+    def record(self, decision: StrategyDecision) -> PaperDecision | None:
+        paper_decision = PaperDecision.from_strategy_decision(decision, self.run_id)
         decisions = self.load()
+        if self._is_duplicate(paper_decision, decisions):
+            return None
         decisions.append(paper_decision)
         self.save(decisions)
         return paper_decision
+
+    def _is_duplicate(
+        self,
+        candidate: PaperDecision,
+        decisions: list[PaperDecision],
+    ) -> bool:
+        if self.duplicate_window <= timedelta(0):
+            return False
+        try:
+            candidate_time = datetime.fromisoformat(candidate.timestamp)
+        except ValueError:
+            return False
+        for existing in reversed(decisions):
+            if existing.opportunity_id != candidate.opportunity_id:
+                continue
+            try:
+                existing_time = datetime.fromisoformat(existing.timestamp)
+            except ValueError:
+                continue
+            if candidate_time - existing_time <= self.duplicate_window:
+                return True
+        return False
 
     def settle(self, decision_id: str, resolved_yes: bool) -> PaperDecision:
         decisions = self.load()

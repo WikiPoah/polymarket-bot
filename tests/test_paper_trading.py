@@ -1,6 +1,7 @@
 """Tests for paper-trading persistence and performance."""
 
-from datetime import datetime
+from datetime import datetime, timedelta
+import json
 
 import pytest
 
@@ -81,3 +82,46 @@ def test_ignored_decision_is_not_a_loss(tmp_path):
     assert metrics.winning_decisions == 0
     assert metrics.losing_decisions == 0
     assert metrics.profit_loss == 0.0
+
+
+def test_duplicate_opportunities_are_skipped_within_window(tmp_path):
+    recorder = PaperTradingRecorder(tmp_path / "history.json")
+    recorder.begin_run("run-1", timedelta(hours=1))
+    first = recorder.record(make_decision())
+    recorder.begin_run("run-2", timedelta(hours=1))
+    duplicate = recorder.record(make_decision())
+
+    assert first is not None
+    assert first.run_id == "run-1"
+    assert first.opportunity_id
+    assert duplicate is None
+    assert len(recorder.load()) == 1
+
+
+def test_zero_duplicate_window_records_repeated_opportunity(tmp_path):
+    recorder = PaperTradingRecorder(tmp_path / "history.json")
+    recorder.begin_run("run-1", timedelta(0))
+    recorder.record(make_decision())
+    recorder.begin_run("run-2", timedelta(0))
+    recorder.record(make_decision())
+    assert len(recorder.load()) == 2
+
+
+def test_legacy_history_migrates_to_versioned_envelope(tmp_path):
+    path = tmp_path / "history.json"
+    original = PaperTradingRecorder(path).record(make_decision())
+    legacy_record = original.to_dict()
+    legacy_record.pop("record_version")
+    legacy_record.pop("run_id")
+    legacy_record.pop("opportunity_id")
+    path.write_text(json.dumps([legacy_record]), encoding="utf-8")
+
+    recorder = PaperTradingRecorder(path)
+    loaded = recorder.load()
+    recorder.save(loaded)
+    payload = json.loads(path.read_text(encoding="utf-8"))
+
+    assert loaded[0].record_version == 1
+    assert loaded[0].opportunity_id
+    assert payload["version"] == 2
+    assert len(payload["records"]) == 1

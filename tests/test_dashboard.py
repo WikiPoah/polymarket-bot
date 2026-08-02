@@ -60,6 +60,15 @@ def test_dashboard_reports_system_status_and_freshness(tmp_path):
         markets_analyzed=4,
         decisions_generated=2,
         provider_status={"RSSProvider": "ERROR"},
+        provider_details={
+            "RSSProvider": {
+                "status": "ERROR",
+                "last_successful_run": "2025-12-31T23:00:00+00:00",
+                "last_data_received": "2025-12-31T22:00:00+00:00",
+                "event_age_seconds": 7260.0,
+                "error": "unavailable",
+            },
+        },
         errors=["RSSProvider: unavailable"],
     ))
 
@@ -71,6 +80,7 @@ def test_dashboard_reports_system_status_and_freshness(tmp_path):
     assert data["system"]["latest_run"]["markets_analyzed"] == 4
     assert data["system"]["last_successful_run"] == "2026-01-01T00:01:00+00:00"
     assert data["system"]["data_freshness"] == "2026-01-01T00:01:00+00:00"
+    assert data["system"]["provider_freshness"]["RSSProvider"]["status"] == "ERROR"
 
 
 def test_demo_history_is_locally_available(tmp_path):

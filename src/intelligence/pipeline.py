@@ -50,6 +50,10 @@ class IntelligencePipeline:
     def provider_errors(self) -> list[str]:
         return self._client.provider_errors
 
+    @property
+    def provider_details(self) -> dict[str, dict]:
+        return self._client.provider_details
+
     def reset_provider_status(self) -> None:
         self._client.reset_status()
 

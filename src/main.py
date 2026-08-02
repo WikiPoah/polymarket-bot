@@ -31,6 +31,7 @@ def _build_runner(history: str, status: str) -> EvaluationRunner:
         pipeline=pipeline,
         status_store=SystemStatusStore(status),
         market_filter=filter_geopolitical_markets,
+        recorder=recorder,
     )
 
 

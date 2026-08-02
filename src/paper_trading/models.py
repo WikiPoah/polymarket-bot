@@ -1,6 +1,7 @@
 """Persistent models for simulated strategy decisions."""
 
 from dataclasses import asdict, dataclass
+import hashlib
 from datetime import datetime, timezone
 from typing import Any
 from uuid import uuid4
@@ -33,11 +34,18 @@ class PaperDecision:
     resolved_yes: bool | None = None
     result: str | None = None
     profit_loss: float = 0.0
+    record_version: int = 2
+    run_id: str = ""
+    opportunity_id: str = ""
 
     @classmethod
-    def from_strategy_decision(cls, decision: StrategyDecision) -> "PaperDecision":
+    def from_strategy_decision(
+        cls,
+        decision: StrategyDecision,
+        run_id: str = "",
+    ) -> "PaperDecision":
         event = decision.opportunity.event.event
-        return cls(
+        paper_decision = cls(
             id=str(uuid4()),
             timestamp=datetime.now(timezone.utc).isoformat(),
             market=dict(decision.opportunity.market),
@@ -69,7 +77,18 @@ class PaperDecision:
                 ),
                 "",
             ),
+            run_id=run_id,
         )
+        paper_decision.opportunity_id = paper_decision.build_opportunity_id()
+        return paper_decision
+
+    def build_opportunity_id(self) -> str:
+        """Return a stable identifier for the same market/event/action tuple."""
+        market_id = self.market.get("id") or self.market.get("conditionId")
+        market_key = str(market_id or self.market.get("question", "")).strip().lower()
+        event_key = str(self.event_url or self.event_title).strip().lower()
+        value = "|".join((market_key, event_key, self.decision.strip().upper()))
+        return hashlib.sha256(value.encode("utf-8")).hexdigest()
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -81,4 +100,11 @@ class PaperDecision:
         values.setdefault("event_type", "OTHER")
         values.setdefault("risk_status", "UNKNOWN")
         values.setdefault("risk_reason", "")
-        return cls(**values)
+        values.setdefault("record_version", 1)
+        values.setdefault("run_id", "")
+        values.setdefault("opportunity_id", "")
+        allowed = cls.__dataclass_fields__
+        decision = cls(**{key: value for key, value in values.items() if key in allowed})
+        if not decision.opportunity_id:
+            decision.opportunity_id = decision.build_opportunity_id()
+        return decision

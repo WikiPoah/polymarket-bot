@@ -2,12 +2,14 @@
 Functions for communicating with the Polymarket API.
 """
 
+import time
+
 import requests
 
 from src.config import (
     GAMMA_API_URL,
     REQUEST_TIMEOUT,
-    DEFAULT_MARKET_LIMIT
+    DEFAULT_MARKET_LIMIT,
 )
 
 
@@ -23,7 +25,10 @@ class PolymarketAPI:
 
         self.base_url = GAMMA_API_URL
 
-    def get_active_markets(self, limit=DEFAULT_MARKET_LIMIT):
+    def get_active_markets(
+        self,
+        limit=DEFAULT_MARKET_LIMIT,
+    ):
         """
         Retrieve active markets from Polymarket.
 
@@ -45,36 +50,70 @@ class PolymarketAPI:
         params = {
             "active": "true",
             "closed": "false",
-            "limit": limit
+            "limit": limit,
         }
 
-        try:
-            response = requests.get(
-                endpoint,
-                params=params,
-                timeout=REQUEST_TIMEOUT
-            )
+        last_error = None
 
-            response.raise_for_status()
+        for attempt in range(3):
 
-            return response.json()
+            try:
 
-        except requests.exceptions.Timeout as error:
-            raise RuntimeError(
-                "The request to the Polymarket API timed out."
-            ) from error
+                print(
+                    f"Polymarket request attempt {attempt + 1}/3..."
+                )
 
-        except requests.exceptions.ConnectionError as error:
-            raise RuntimeError(
-                "Unable to connect to the Polymarket API."
-            ) from error
+                response = requests.get(
+                    endpoint,
+                    params=params,
+                    timeout=REQUEST_TIMEOUT,
+                )
 
-        except requests.exceptions.HTTPError as error:
-            raise RuntimeError(
-                f"HTTP error: {error.response.status_code}"
-            ) from error
+                print(
+                    f"Response status: {response.status_code}"
+                )
 
-        except requests.exceptions.RequestException as error:
-            raise RuntimeError(
-                "An unexpected API error occurred."
-            ) from error
+                response.raise_for_status()
+
+                return response.json()
+
+            except requests.exceptions.Timeout as error:
+
+                print(
+                    "Polymarket timeout."
+                )
+
+                last_error = error
+
+            except requests.exceptions.ConnectionError as error:
+
+                print(
+                    "Polymarket connection error."
+                )
+
+                last_error = error
+
+            except requests.exceptions.HTTPError as error:
+
+                status_code = (
+                    error.response.status_code
+                    if error.response is not None
+                    else "unknown"
+                )
+
+                raise RuntimeError(
+                    f"HTTP error: {status_code}"
+                ) from error
+
+            except requests.exceptions.RequestException as error:
+
+                raise RuntimeError(
+                    f"Unexpected API error: {error}"
+                ) from error
+
+            if attempt < 2:
+                time.sleep(2)
+
+        raise RuntimeError(
+            f"Polymarket request failed after retries: {last_error}"
+        ) from last_error

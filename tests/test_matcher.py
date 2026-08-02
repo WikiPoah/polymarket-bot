@@ -110,3 +110,65 @@ def test_match_contains_reasons():
     )[0]
 
     assert len(opportunity.match_reasons) > 0
+
+
+def test_matches_ccp_leadership_crisis():
+
+    event = create_event()
+    event.title = "CCP leadership crisis"
+    event.actors = ["CCP"]
+    event.outcome = Outcome.OTHER
+
+    opportunities = find_matching_markets(
+        ScoredEvent(event=event, score=80),
+        [create_market()],
+    )
+
+    assert len(opportunities) == 1
+    assert "Actor: CCP (+20)" in opportunities[0].match_reasons
+
+
+def test_matches_chinese_leadership_succession_without_actor():
+
+    event = create_event()
+    event.title = "Chinese leadership succession event"
+    event.actors = []
+    event.outcome = Outcome.OTHER
+
+    opportunities = find_matching_markets(
+        ScoredEvent(event=event, score=80),
+        [create_market()],
+    )
+
+    assert len(opportunities) == 1
+
+
+def test_rejects_xi_diplomatic_event():
+
+    event = create_event()
+    event.title = "Xi Jinping meets foreign leaders"
+    event.event_type = EventType.DIPLOMATIC
+    event.outcome = Outcome.OTHER
+
+    opportunities = find_matching_markets(
+        ScoredEvent(event=event, score=80),
+        [create_market()],
+    )
+
+    assert opportunities == []
+
+
+def test_rejects_china_economic_policy_event():
+
+    event = create_event()
+    event.title = "China announces economic policy"
+    event.actors = []
+    event.event_type = EventType.ECONOMIC
+    event.outcome = Outcome.ECONOMIC_POLICY
+
+    opportunities = find_matching_markets(
+        ScoredEvent(event=event, score=80),
+        [create_market()],
+    )
+
+    assert opportunities == []

@@ -4,6 +4,7 @@ Application entry point.
 
 from src.api import PolymarketAPI
 from src.filters import filter_geopolitical_markets
+from src.intelligence.client import IntelligenceClient
 from src.intelligence.pipeline import IntelligencePipeline
 from src.intelligence.providers.gdelt import GDELTProvider
 
@@ -40,23 +41,61 @@ def main() -> None:
 
     print("Retrieving intelligence...\n")
 
-    pipeline = IntelligencePipeline(
-        GDELTProvider()
+    intelligence_client = IntelligenceClient(
+        [
+            GDELTProvider(),
+        ]
     )
 
-    opportunities = pipeline.run(markets)
+    pipeline = IntelligencePipeline(
+        intelligence_client
+    )
 
-    if not opportunities:
+    decisions = pipeline.run(markets)
+
+    if not decisions:
         print("No trading opportunities found.")
         return
 
     print(
-        f"Found {len(opportunities)} trading opportunities.\n"
+        f"Found {len(decisions)} trading decisions.\n"
     )
 
     print("=" * 100)
 
-    for opportunity in opportunities:
+    for decision in decisions:
+
+        opportunity = decision.opportunity
+
+        print(
+            f"Action: {decision.action.value}"
+        )
+
+        print(
+            f"Estimated Probability: {decision.estimated_probability:.1%}"
+        )
+
+        print(
+            f"Market Probability: {decision.market_probability:.1%}"
+        )
+
+        print(
+            f"Edge: {decision.edge:+.1%}"
+        )
+
+        print(
+            f"Expected Value: {decision.expected_value:.3f}"
+        )
+
+        print(
+            f"Position Size: {decision.position_size:.1%}"
+        )
+
+        print(
+            f"Confidence: {decision.confidence:.0%}"
+        )
+
+        print()
 
         print(
             f"Event Score: {opportunity.event.score}"
@@ -64,10 +103,6 @@ def main() -> None:
 
         print(
             f"Match Score: {opportunity.match_score}"
-        )
-
-        print(
-            f"Confidence: {opportunity.confidence:.0%}"
         )
 
         print()
@@ -94,11 +129,20 @@ def main() -> None:
             f"  {opportunity.market.get('question')}"
         )
 
+        if decision.reasons:
+
+            print()
+
+            print("Strategy:")
+
+            for reason in decision.reasons:
+                print(f"  - {reason}")
+
         if opportunity.match_reasons:
 
             print()
 
-            print("Reasons:")
+            print("Matching:")
 
             for reason in opportunity.match_reasons:
                 print(f"  - {reason}")

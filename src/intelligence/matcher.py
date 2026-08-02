@@ -25,7 +25,7 @@ def calculate_match_score(
     reasons: list[str] = []
 
     #
-    # Leadership markets require strong evidence.
+    # Leadership markets require relevant evidence.
     #
 
     if market.event_type == EventType.LEADERSHIP:
@@ -40,14 +40,19 @@ def calculate_match_score(
             for actor in event.actors
         )
 
-        outcome_match = (
-            event.outcome == market.expected_outcome
-            and event.outcome != Outcome.OTHER
+        ccp_match = (
+            "Xi Jinping" in market.actors
+            and "China" in market.countries
+            and "CCP" in event.actors
         )
 
         if not (
-            country_match
-            and (actor_match or outcome_match)
+            event.event_type == EventType.LEADERSHIP
+            and (
+                actor_match
+                or ccp_match
+                or country_match
+            )
         ):
             return 0, 0.0, []
 
@@ -116,12 +121,25 @@ def calculate_match_score(
     # Actors
     #
 
+    ccp_match = (
+        market.event_type == EventType.LEADERSHIP
+        and "Xi Jinping" in market.actors
+        and "China" in market.countries
+        and "CCP" in event.actors
+    )
+
     for actor in event.actors:
         if actor in market.actors:
             score += 20
             reasons.append(
                 f"Actor: {actor} (+20)"
             )
+
+    if ccp_match:
+        score += 20
+        reasons.append(
+            "Actor: CCP (+20)"
+        )
 
     score = min(score, 100)
 

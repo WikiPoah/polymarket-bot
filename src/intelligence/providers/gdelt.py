@@ -33,11 +33,12 @@ class GDELTProvider(IntelligenceProvider):
 
     def fetch(
         self,
+        query: str | None = None,
         limit: int = 100,
         sort: str = "recent",
     ) -> list[GeoPoliticalEvent]:
         """
-        Retrieve recent geopolitical events.
+        Retrieve geopolitical events.
         """
 
         if not GDELT_API_KEY:
@@ -55,6 +56,9 @@ class GDELTProvider(IntelligenceProvider):
             "sort": sort,
         }
 
+        if query:
+            params["query"] = query
+
         url = f"{GDELT_API_URL}{self.ENDPOINT}"
 
         last_error: Exception | None = None
@@ -63,7 +67,7 @@ class GDELTProvider(IntelligenceProvider):
 
             try:
 
-                with httpx.Client(timeout=10) as client:
+                with httpx.Client(timeout=30) as client:
 
                     response = client.get(
                         url,

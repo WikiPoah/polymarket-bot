@@ -16,7 +16,7 @@ class IntelligenceClient:
 
     def __init__(
         self,
-        providers: list[IntelligenceProvider]
+        providers: list[IntelligenceProvider],
     ) -> None:
         """
         Initialise the intelligence client.
@@ -27,9 +27,24 @@ class IntelligenceClient:
         """
         self._providers = providers
 
-    def fetch(self) -> list[Any]:
+    def fetch(
+        self,
+        query: str | None = None,
+        limit: int = 100,
+        sort: str = "recent",
+    ) -> list[Any]:
         """
         Retrieve data from every configured provider.
+
+        Args:
+            query:
+                Optional search query.
+
+            limit:
+                Maximum number of records to retrieve.
+
+            sort:
+                Ordering applied by each provider.
 
         Returns:
             A combined list containing the results from all providers.
@@ -38,7 +53,12 @@ class IntelligenceClient:
         results: list[Any] = []
 
         for provider in self._providers:
-            provider_results = provider.fetch()
+
+            provider_results = provider.fetch(
+                query=query,
+                limit=limit,
+                sort=sort,
+            )
 
             if provider_results:
                 results.extend(provider_results)

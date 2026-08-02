@@ -17,13 +17,18 @@ class IntelligenceProvider(ABC):
     @abstractmethod
     def fetch(
         self,
+        query: str | None = None,
         limit: int = 100,
-        sort: str = "recent"
+        sort: str = "recent",
     ) -> list[Any]:
         """
         Retrieve intelligence data.
 
         Args:
+            query:
+                Optional search query. Providers may ignore this if
+                searching is not supported.
+
             limit:
                 Maximum number of records to retrieve.
 

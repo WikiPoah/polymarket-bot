@@ -28,7 +28,9 @@ ACTOR_COUNTRIES = {
 }
 
 
-LEADERSHIP_ACTORS = set(ACTOR_COUNTRIES.keys())
+LEADERSHIP_ACTORS = set(
+    ACTOR_COUNTRIES.keys()
+)
 
 
 class MarketClassifier:
@@ -59,7 +61,12 @@ class MarketClassifier:
         #
 
         for event_type, keywords in EVENT_KEYWORDS.items():
-            if any(keyword in question for keyword in keywords):
+
+            if any(
+                keyword in question
+                for keyword in keywords
+            ):
+
                 classified.event_type = event_type
                 break
 
@@ -68,43 +75,42 @@ class MarketClassifier:
         #
 
         for topic, keywords in TOPIC_KEYWORDS.items():
-            if any(keyword in question for keyword in keywords):
-                classified.topics.append(topic)
+
+            if any(
+                keyword in question
+                for keyword in keywords
+            ):
+
+                if topic not in classified.topics:
+                    classified.topics.append(topic)
 
         #
         # Actors
         #
 
         for actor, aliases in ACTORS.items():
-            if any(alias in question for alias in aliases):
-                classified.actors.append(actor)
 
-        #
-        # Leadership inference
-        #
+            if any(
+                alias.lower() in question
+                for alias in aliases
+            ):
 
-        if (
-            classified.event_type == EventType.OTHER
-            and any(
-                actor in LEADERSHIP_ACTORS
-                for actor in classified.actors
-            )
-        ):
-            classified.event_type = EventType.LEADERSHIP
-
-        if (
-            classified.event_type == EventType.LEADERSHIP
-            and Topic.POLITICS not in classified.topics
-        ):
-            classified.topics.append(Topic.POLITICS)
+                if actor not in classified.actors:
+                    classified.actors.append(actor)
 
         #
         # Countries
         #
 
         for country, aliases in COUNTRIES.items():
-            if any(alias in question for alias in aliases):
-                classified.countries.append(country)
+
+            if any(
+                alias.lower() in question
+                for alias in aliases
+            ):
+
+                if country not in classified.countries:
+                    classified.countries.append(country)
 
         #
         # Infer country from actor
@@ -118,39 +124,79 @@ class MarketClassifier:
                 country is not None
                 and country not in classified.countries
             ):
+
                 classified.countries.append(country)
+
+        #
+        # Leadership inference
+        #
+
+        if (
+            classified.event_type == EventType.OTHER
+            and any(
+                actor in LEADERSHIP_ACTORS
+                for actor in classified.actors
+            )
+        ):
+
+            classified.event_type = EventType.LEADERSHIP
+
+        #
+        # If a leadership actor is detected,
+        # ensure politics topic exists.
+        #
+
+        if (
+            classified.event_type == EventType.LEADERSHIP
+            and Topic.POLITICS not in classified.topics
+        ):
+
+            classified.topics.append(
+                Topic.POLITICS
+            )
 
         #
         # Expected outcome
         #
 
         if classified.event_type == EventType.LEADERSHIP:
-            classified.expected_outcome = Outcome.LEADER_REMOVED
+
+            classified.expected_outcome = (
+                Outcome.LEADER_REMOVED
+            )
 
         elif classified.event_type == EventType.MILITARY_STRIKE:
+
             classified.expected_outcome = (
                 Outcome.MILITARY_ESCALATION
             )
 
         elif classified.event_type == EventType.SANCTIONS:
-            classified.expected_outcome = Outcome.SANCTIONS
+
+            classified.expected_outcome = (
+                Outcome.SANCTIONS
+            )
 
         elif classified.event_type == EventType.ENERGY:
+
             classified.expected_outcome = (
                 Outcome.ENERGY_DISRUPTION
             )
 
         elif classified.event_type == EventType.SHIPPING:
+
             classified.expected_outcome = (
                 Outcome.SHIPPING_DISRUPTION
             )
 
         elif classified.event_type == EventType.ECONOMIC:
+
             classified.expected_outcome = (
                 Outcome.ECONOMIC_POLICY
             )
 
         elif classified.event_type == EventType.ELECTION:
+
             classified.expected_outcome = (
                 Outcome.ELECTION_RESULT
             )
@@ -164,6 +210,7 @@ class MarketClassifier:
             region = COUNTRY_REGIONS.get(country)
 
             if region is not None:
+
                 classified.classified_region = region
                 break
 

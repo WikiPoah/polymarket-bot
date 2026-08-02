@@ -16,7 +16,7 @@ load_dotenv()
 GAMMA_API_URL = "https://gamma-api.polymarket.com"
 
 # Maximum time (in seconds) to wait for API responses
-REQUEST_TIMEOUT = 10
+REQUEST_TIMEOUT = 30
 
 # Default number of markets to request
 DEFAULT_MARKET_LIMIT = 25

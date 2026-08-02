@@ -1,0 +1,86 @@
+[
+  {
+    "id": "demo-win",
+    "timestamp": "2026-01-01T00:00:00+00:00",
+    "market": {
+      "question": "Xi Jinping out before 2027?"
+    },
+    "decision": "BUY YES",
+    "market_probability": 0.4,
+    "estimated_probability": 0.72,
+    "edge": 0.32,
+    "confidence": 0.82,
+    "position_size": 0.08,
+    "evidence_confidence": 0.9,
+    "evidence_count": 2,
+    "supporting_sources": [
+      "BBC",
+      "GDELT"
+    ],
+    "event_title": "Chinese leadership succession discussed",
+    "event_source": "BBC",
+    "event_url": "https://example.test/demo",
+    "event_type": "LEADERSHIP",
+    "risk_status": "ACCEPTED",
+    "risk_reason": "",
+    "resolved_yes": true,
+    "result": "WIN",
+    "profit_loss": 0.048
+  },
+  {
+    "id": "demo-loss",
+    "timestamp": "2026-01-01T00:00:00+00:00",
+    "market": {
+      "question": "Xi Jinping out before 2027?"
+    },
+    "decision": "BUY NO",
+    "market_probability": 0.4,
+    "estimated_probability": 0.72,
+    "edge": 0.32,
+    "confidence": 0.82,
+    "position_size": 0.08,
+    "evidence_confidence": 0.9,
+    "evidence_count": 2,
+    "supporting_sources": [
+      "BBC",
+      "GDELT"
+    ],
+    "event_title": "Chinese leadership succession discussed",
+    "event_source": "BBC",
+    "event_url": "https://example.test/demo",
+    "event_type": "LEADERSHIP",
+    "risk_status": "ACCEPTED",
+    "risk_reason": "",
+    "resolved_yes": true,
+    "result": "LOSS",
+    "profit_loss": -0.032
+  },
+  {
+    "id": "demo-open",
+    "timestamp": "2026-01-01T00:00:00+00:00",
+    "market": {
+      "question": "Xi Jinping out before 2027?"
+    },
+    "decision": "BUY YES",
+    "market_probability": 0.4,
+    "estimated_probability": 0.72,
+    "edge": 0.32,
+    "confidence": 0.82,
+    "position_size": 0.08,
+    "evidence_confidence": 0.9,
+    "evidence_count": 2,
+    "supporting_sources": [
+      "BBC",
+      "GDELT"
+    ],
+    "event_title": "Chinese leadership succession discussed",
+    "event_source": "BBC",
+    "event_url": "https://example.test/demo",
+    "event_type": "LEADERSHIP",
+    "risk_status": "ACCEPTED",
+    "risk_reason": "",
+    "resolved_yes": null,
+    "result": null,
+    "profit_loss": 0.0
+  }
+]

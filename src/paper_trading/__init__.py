@@ -10,6 +10,7 @@ from src.paper_trading.analytics import (
     PerformanceAnalytics,
     format_report,
 )
+from src.paper_trading.backtesting import BacktestConfig, BacktestEngine, BacktestReport
 
 __all__ = [
     "PaperDecision",
@@ -21,4 +22,7 @@ __all__ = [
     "CalibrationBucket",
     "PerformanceAnalytics",
     "format_report",
+    "BacktestConfig",
+    "BacktestEngine",
+    "BacktestReport",
 ]

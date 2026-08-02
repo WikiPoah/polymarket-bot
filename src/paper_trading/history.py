@@ -23,7 +23,16 @@ class PaperTradingRecorder:
             return []
         if not isinstance(payload, list):
             return []
-        return [PaperDecision.from_dict(item) for item in payload if isinstance(item, dict)]
+        decisions = []
+        for item in payload:
+            if not isinstance(item, dict):
+                continue
+            try:
+                decisions.append(PaperDecision.from_dict(item))
+            except (TypeError, ValueError):
+                # A damaged record must not make the remaining history unreadable.
+                continue
+        return decisions
 
     def save(self, decisions: list[PaperDecision]) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -44,27 +53,32 @@ class PaperTradingRecorder:
         for decision in decisions:
             if decision.id != decision_id:
                 continue
-            decision.resolved_yes = resolved_yes
-            if decision.decision == StrategyAction.BUY_YES.value:
-                won = resolved_yes
-                decision.profit_loss = (
-                    decision.position_size * (1 - decision.market_probability)
-                    if won
-                    else -decision.position_size * decision.market_probability
-                )
-            elif decision.decision == StrategyAction.BUY_NO.value:
-                won = not resolved_yes
-                decision.profit_loss = (
-                    decision.position_size * decision.market_probability
-                    if won
-                    else -decision.position_size * (1 - decision.market_probability)
-                )
-            else:
-                decision.profit_loss = 0.0
-                decision.result = "IGNORED"
-                self.save(decisions)
-                return decision
-            decision.result = "WIN" if won else "LOSS"
+            self.calculate_outcome(decision, resolved_yes)
             self.save(decisions)
             return decision
         raise KeyError(f"Unknown paper decision: {decision_id}")
+
+    @staticmethod
+    def calculate_outcome(decision: PaperDecision, resolved_yes: bool) -> PaperDecision:
+        """Apply binary-market settlement math to a paper decision in memory."""
+        decision.resolved_yes = resolved_yes
+        if decision.decision == StrategyAction.BUY_YES.value:
+            won = resolved_yes
+            decision.profit_loss = (
+                decision.position_size * (1 - decision.market_probability)
+                if won
+                else -decision.position_size * decision.market_probability
+            )
+        elif decision.decision == StrategyAction.BUY_NO.value:
+            won = not resolved_yes
+            decision.profit_loss = (
+                decision.position_size * decision.market_probability
+                if won
+                else -decision.position_size * (1 - decision.market_probability)
+            )
+        else:
+            decision.profit_loss = 0.0
+            decision.result = "IGNORED"
+            return decision
+        decision.result = "WIN" if won else "LOSS"
+        return decision

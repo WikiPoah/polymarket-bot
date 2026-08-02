@@ -28,6 +28,8 @@ class PaperDecision:
     event_source: str
     event_url: str
     event_type: str = "OTHER"
+    risk_status: str = "UNKNOWN"
+    risk_reason: str = ""
     resolved_yes: bool | None = None
     result: str | None = None
     profit_loss: float = 0.0
@@ -52,6 +54,21 @@ class PaperDecision:
             event_source=event.source,
             event_url=event.source_url,
             event_type=event.event_type.value,
+            risk_status=(
+                "REJECTED"
+                if any(reason.startswith("Risk rejected:") for reason in decision.reasons)
+                else "ACCEPTED"
+                if decision.action.value in {"BUY YES", "BUY NO"}
+                else "IGNORED"
+            ),
+            risk_reason=next(
+                (
+                    reason.removeprefix("Risk rejected: ").strip()
+                    for reason in decision.reasons
+                    if reason.startswith("Risk rejected:")
+                ),
+                "",
+            ),
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -62,4 +79,6 @@ class PaperDecision:
         # Records written before event_type was introduced remain readable.
         values = dict(data)
         values.setdefault("event_type", "OTHER")
+        values.setdefault("risk_status", "UNKNOWN")
+        values.setdefault("risk_reason", "")
         return cls(**values)

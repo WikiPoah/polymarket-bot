@@ -2,6 +2,8 @@
 Risk management.
 """
 
+import math
+
 from src.strategy.expected_value import StrategyAction
 
 
@@ -27,6 +29,19 @@ class RiskManager:
 
         if action == StrategyAction.IGNORE:
             return action
+
+        if not all(
+            math.isfinite(value)
+            for value in (
+                edge,
+                expected_value,
+                confidence,
+            )
+        ):
+            return StrategyAction.IGNORE
+
+        if not 0.0 <= confidence <= 1.0:
+            return StrategyAction.IGNORE
 
         if abs(edge) < self.MIN_EDGE:
             return StrategyAction.IGNORE

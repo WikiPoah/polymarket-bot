@@ -73,6 +73,20 @@ class StrategyEngine:
             )
         )
 
+        intelligence_confidence = max(
+            0.0,
+            min(
+                opportunity.event.event.evidence_confidence,
+                1.0,
+            ),
+        )
+
+        decision_confidence = round(
+            opportunity.confidence
+            * intelligence_confidence,
+            2,
+        )
+
         edge, expected_value, action = (
             self._ev_calculator.calculate(
                 estimated_probability,
@@ -84,7 +98,7 @@ class StrategyEngine:
             action=action,
             edge=edge,
             expected_value=expected_value,
-            confidence=opportunity.confidence,
+            confidence=decision_confidence,
         )
 
         position_size = 0.0
@@ -93,7 +107,7 @@ class StrategyEngine:
             position_size = (
                 self._position_sizer.calculate(
                     edge,
-                    opportunity.confidence,
+                    decision_confidence,
                 )
             )
 
@@ -104,7 +118,7 @@ class StrategyEngine:
             market_probability=market_probability,
             edge=edge,
             expected_value=expected_value,
-            confidence=opportunity.confidence,
+            confidence=decision_confidence,
             position_size=position_size,
             reasons=[
                 "Probability estimated from intelligence.",

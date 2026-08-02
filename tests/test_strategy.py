@@ -21,6 +21,7 @@ from src.strategy.expected_value import (
 )
 from src.strategy.position_sizing import PositionSizer
 from src.strategy.probability import ProbabilityEstimator
+from src.strategy.engine import StrategyEngine
 
 
 def create_event() -> GeoPoliticalEvent:
@@ -42,6 +43,7 @@ def create_event() -> GeoPoliticalEvent:
         classified_region=Region.EAST_ASIA,
         countries=["China"],
         actors=["Xi Jinping"],
+        evidence_confidence=0.90,
     )
 
 
@@ -130,3 +132,76 @@ def test_position_sizer():
     )
 
     assert 0.0 <= position <= 0.10
+
+
+def test_strong_edge_produces_buy_yes_decision():
+
+    decision = StrategyEngine().evaluate(create_opportunity())
+
+    assert decision.edge > 0.05
+    assert decision.action == StrategyAction.BUY_YES
+    assert decision.confidence >= 0.60
+
+
+def test_no_edge_is_ignored():
+
+    calculator = ExpectedValueCalculator()
+
+    edge, expected_value, action = calculator.calculate(
+        0.50,
+        0.50,
+    )
+
+    assert edge == 0.0
+    assert expected_value == 0.0
+    assert action == StrategyAction.IGNORE
+
+
+def test_low_confidence_opportunity_is_rejected():
+
+    event = create_event()
+    event.evidence_confidence = 0.40
+    opportunity = find_matching_markets(
+        ScoredEvent(event=event, score=90),
+        [create_market()],
+    )[0]
+
+    decision = StrategyEngine().evaluate(opportunity)
+
+    assert decision.confidence < 0.60
+    assert decision.action == StrategyAction.IGNORE
+
+
+def test_high_confidence_event_is_accepted():
+
+    event = create_event()
+    event.evidence_confidence = 1.0
+    opportunity = find_matching_markets(
+        ScoredEvent(event=event, score=100),
+        [create_market()],
+    )[0]
+
+    decision = StrategyEngine().evaluate(opportunity)
+
+    assert decision.confidence >= 0.60
+    assert decision.action == StrategyAction.BUY_YES
+
+
+def test_incorrect_market_pricing_produces_buy_no():
+
+    market = create_market()
+    market.market["outcomePrices"] = '["0.99", "0.01"]'
+    event = create_event()
+    event.significance = None
+    event.confidence = None
+    event.market_sensitivity = None
+    opportunity = find_matching_markets(
+        ScoredEvent(event=event, score=50),
+        [market],
+    )[0]
+
+    decision = StrategyEngine().evaluate(opportunity)
+
+    assert decision.market_probability == 0.99
+    assert decision.edge < 0.0
+    assert decision.action == StrategyAction.BUY_NO

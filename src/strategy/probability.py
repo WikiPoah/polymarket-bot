@@ -47,6 +47,10 @@ class ProbabilityEstimator:
         if event.market_sensitivity is not None:
             score += (event.market_sensitivity - 0.5) * 0.10
 
+        score += (
+            event.evidence_confidence - 0.5
+        ) * 0.15
+
         #
         # Match quality
         #

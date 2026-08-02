@@ -179,6 +179,7 @@ def find_matching_markets(
                     match_score=match_score,
                     confidence=confidence,
                     match_reasons=reasons,
+                    expected_outcome=market.expected_outcome,
                 )
             )
 

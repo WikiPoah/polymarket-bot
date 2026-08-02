@@ -110,6 +110,7 @@ class TradingOpportunity:
     confidence: float
 
     match_reasons: list[str] = field(default_factory=list)
+    expected_outcome: Outcome = Outcome.OTHER
 
 
 @dataclass(slots=True)

@@ -27,6 +27,7 @@ class PaperDecision:
     event_title: str
     event_source: str
     event_url: str
+    event_type: str = "OTHER"
     resolved_yes: bool | None = None
     result: str | None = None
     profit_loss: float = 0.0
@@ -50,6 +51,7 @@ class PaperDecision:
             event_title=event.title,
             event_source=event.source,
             event_url=event.source_url,
+            event_type=event.event_type.value,
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -57,4 +59,7 @@ class PaperDecision:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "PaperDecision":
-        return cls(**data)
+        # Records written before event_type was introduced remain readable.
+        values = dict(data)
+        values.setdefault("event_type", "OTHER")
+        return cls(**values)

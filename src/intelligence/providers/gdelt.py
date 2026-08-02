@@ -18,7 +18,7 @@ from src.intelligence.exceptions import (
 from src.intelligence.parser import (
     parse_gdelt_event,
 )
-from src.intelligence.provider import (
+from src.intelligence.providers.base import (
     IntelligenceProvider,
 )
 from src.models import GeoPoliticalEvent

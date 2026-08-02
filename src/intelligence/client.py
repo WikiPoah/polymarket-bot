@@ -4,9 +4,10 @@ Intelligence client.
 Coordinates one or more intelligence providers.
 """
 
-from typing import Any
-
-from .provider import IntelligenceProvider
+from src.intelligence.providers.base import (
+    IntelligenceProvider,
+)
+from src.models import GeoPoliticalEvent
 
 
 class IntelligenceClient:
@@ -32,7 +33,7 @@ class IntelligenceClient:
         query: str | None = None,
         limit: int = 100,
         sort: str = "recent",
-    ) -> list[Any]:
+    ) -> list[GeoPoliticalEvent]:
         """
         Retrieve data from every configured provider.
 
@@ -50,7 +51,7 @@ class IntelligenceClient:
             A combined list containing the results from all providers.
         """
 
-        results: list[Any] = []
+        results: list[GeoPoliticalEvent] = []
 
         for provider in self._providers:
 
@@ -61,6 +62,18 @@ class IntelligenceClient:
             )
 
             if provider_results:
+                if not all(
+                    isinstance(
+                        event,
+                        GeoPoliticalEvent,
+                    )
+                    for event in provider_results
+                ):
+                    raise TypeError(
+                        "Intelligence providers must return "
+                        "GeoPoliticalEvent objects."
+                    )
+
                 results.extend(provider_results)
 
         return results

@@ -19,6 +19,7 @@ from src.strategy.engine import (
     StrategyEngine,
 )
 from src.paper_trading.history import PaperTradingRecorder
+from src.strategy.portfolio_risk import PortfolioRiskManager
 
 
 class IntelligencePipeline:
@@ -39,6 +40,7 @@ class IntelligencePipeline:
         self._query_builder = MarketQueryBuilder()
         self._strategy_engine = StrategyEngine()
         self._paper_trader = paper_trader
+        self._portfolio_risk = PortfolioRiskManager()
 
     def _is_relevant(
         self,
@@ -211,6 +213,11 @@ class IntelligencePipeline:
                 for opportunity in opportunities:
 
                     decision = self._strategy_engine.evaluate(opportunity)
+                    if self._paper_trader is not None:
+                        decision = self._portfolio_risk.apply(
+                            decision,
+                            self._paper_trader.load(),
+                        )
                     decisions.append(decision)
                     if self._paper_trader is not None:
                         self._paper_trader.record(decision)

@@ -8,6 +8,7 @@ from src.intelligence.client import IntelligenceClient
 from src.intelligence.pipeline import IntelligencePipeline
 from src.intelligence.providers.gdelt import GDELTProvider
 from src.intelligence.providers.rss import RSSProvider
+from src.paper_trading.history import PaperTradingRecorder
 
 
 def main() -> None:
@@ -50,7 +51,8 @@ def main() -> None:
     )
 
     pipeline = IntelligencePipeline(
-        intelligence_client
+        intelligence_client,
+        paper_trader=PaperTradingRecorder(),
     )
 
     decisions = pipeline.run(markets)

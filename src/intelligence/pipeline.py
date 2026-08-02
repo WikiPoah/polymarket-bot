@@ -18,6 +18,7 @@ from src.strategy.engine import (
     StrategyDecision,
     StrategyEngine,
 )
+from src.paper_trading.history import PaperTradingRecorder
 
 
 class IntelligencePipeline:
@@ -28,6 +29,7 @@ class IntelligencePipeline:
     def __init__(
         self,
         client: IntelligenceClient,
+        paper_trader: PaperTradingRecorder | None = None,
     ) -> None:
 
         self._client = client
@@ -36,6 +38,7 @@ class IntelligencePipeline:
         self._market_classifier = MarketClassifier()
         self._query_builder = MarketQueryBuilder()
         self._strategy_engine = StrategyEngine()
+        self._paper_trader = paper_trader
 
     def _is_relevant(
         self,
@@ -207,11 +210,10 @@ class IntelligencePipeline:
 
                 for opportunity in opportunities:
 
-                    decisions.append(
-                        self._strategy_engine.evaluate(
-                            opportunity
-                        )
-                    )
+                    decision = self._strategy_engine.evaluate(opportunity)
+                    decisions.append(decision)
+                    if self._paper_trader is not None:
+                        self._paper_trader.record(decision)
 
         decisions.sort(
             key=lambda decision: (

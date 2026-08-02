@@ -40,13 +40,21 @@ RSS_FEEDS = [
         "name": "BBC World",
         "url": "https://feeds.bbci.co.uk/news/world/rss.xml",
     },
+    {
+        "name": "UN News",
+        "url": "https://news.un.org/feed/subscribe/en/news/all/rss.xml",
+    },
 ]
+
+RELIEFWEB_API_URL = "https://api.reliefweb.int/v2/reports"
 
 # Configurable source reliability values used when combining evidence.
 # The scorer consumes the resulting event confidence, not these values.
 SOURCE_RELIABILITY = {
     "GDELT": 0.90,
     "BBC World": 0.80,
+    "UN News": 0.85,
+    "ReliefWeb": 0.85,
     "RSS": 0.70,
     "default": 0.50,
 }

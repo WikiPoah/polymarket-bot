@@ -25,9 +25,9 @@ EVENT_KEYWORDS = {
 
     EventType.MILITARY_STRIKE: [
         "airstrike",
-        "missile",
+        "air strike",
+        "missile strike",
         "bombing",
-        "strike",
         "shelling",
         "rocket attack",
         "artillery",

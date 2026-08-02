@@ -6,6 +6,8 @@ from src.intelligence.classification import EventType, Region
 from src.intelligence.outcomes import Outcome
 from src.intelligence.scorer import score_events
 from src.models import ClassifiedMarket, GeoPoliticalEvent
+from datetime import datetime, timedelta, timezone
+from src.intelligence.evidence import aggregate_events
 
 
 def create_event(
@@ -114,3 +116,37 @@ def test_multiple_sources_increase_event_score():
     )[0].score
 
     assert multiple_source_score > one_source_score
+
+
+def test_fresh_independent_evidence_scores_above_stale_single_source():
+    now = datetime.now(timezone.utc)
+    fresh_one = create_event(
+        event_type=EventType.LEADERSHIP,
+        actors=["Xi Jinping"], countries=["China"],
+    )
+    fresh_one.title = "Xi leadership challenge"
+    fresh_one.source = "BBC World"
+    fresh_one.published_at = now
+    fresh_two = create_event(
+        event_type=EventType.LEADERSHIP,
+        actors=["Xi Jinping"], countries=["China"],
+    )
+    fresh_two.title = fresh_one.title
+    fresh_two.source = "UN News"
+    fresh_two.published_at = now
+    stale = create_event(
+        event_type=EventType.LEADERSHIP,
+        actors=["Xi Jinping"], countries=["China"],
+    )
+    stale.title = "Old leadership report"
+    stale.source = "BBC World"
+    stale.published_at = now - timedelta(days=30)
+
+    fresh = aggregate_events([fresh_one, fresh_two])[0]
+    stale = aggregate_events([stale])[0]
+
+    assert fresh.evidence_count == 2
+    assert fresh.freshness_score == 1.0
+    assert stale.freshness_score == .35
+    scores = score_events([stale, fresh], create_market())
+    assert scores[0].event is fresh

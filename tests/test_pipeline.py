@@ -43,17 +43,33 @@ def xi_market():
     )
 
 
+def invasion_market():
+    return MarketClassifier().classify(
+        {"question": "Will China invade Taiwan before 2027?"}
+    )
+
+
 def test_leadership_market_accepts_matching_actor():
     event = create_event(
         "Xi Jinping makes a statement",
         countries=["China"],
         actors=["Xi Jinping"],
+        event_type=EventType.LEADERSHIP,
     )
 
-    assert IntelligencePipeline(None)._is_relevant(
-        event,
-        xi_market(),
+    assert IntelligencePipeline(None)._is_relevant(event, xi_market())
+
+
+def test_leadership_market_rejects_general_news_mentioning_actor():
+    event = create_event(
+        "Xi Jinping discusses economic growth",
+        countries=["China"],
+        actors=["Xi Jinping"],
+        event_type=EventType.ECONOMIC,
+        outcome=Outcome.ECONOMIC_POLICY,
     )
+
+    assert not IntelligencePipeline(None)._is_relevant(event, xi_market())
 
 
 def test_xi_leadership_market_accepts_ccp_actor():
@@ -61,6 +77,7 @@ def test_xi_leadership_market_accepts_ccp_actor():
         "CCP succession dispute",
         countries=["China"],
         actors=["CCP"],
+        event_type=EventType.LEADERSHIP,
     )
 
     assert IntelligencePipeline(None)._is_relevant(
@@ -106,3 +123,14 @@ def test_leadership_market_rejects_china_flood_with_outcome():
         event,
         xi_market(),
     )
+
+
+def test_military_market_rejects_economic_country_overlap():
+    event = create_event(
+        "China reports slower economic growth",
+        countries=["China"],
+        event_type=EventType.ECONOMIC,
+        outcome=Outcome.ECONOMIC_POLICY,
+    )
+
+    assert not IntelligencePipeline(None)._is_relevant(event, invasion_market())

@@ -165,6 +165,8 @@ def test_source_reliability_is_configurable():
 
     assert get_source_reliability("GDELT") == 0.90
     assert get_source_reliability("unknown source") == 0.50
+    assert get_source_reliability("UN News") == 0.85
+    assert get_source_reliability("ReliefWeb") == 0.85
 
 
 def test_client_deduplicates_and_combines_sources():

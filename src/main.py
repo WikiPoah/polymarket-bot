@@ -8,6 +8,7 @@ from src.intelligence.client import IntelligenceClient
 from src.intelligence.pipeline import IntelligencePipeline
 from src.intelligence.providers.gdelt import GDELTProvider
 from src.intelligence.providers.rss import RSSProvider
+from src.intelligence.providers.reliefweb import ReliefWebProvider
 from src.paper_trading.history import PaperTradingRecorder
 from src.monitoring import SystemStatusStore
 from src.runner import EvaluationResult, EvaluationRunner
@@ -19,6 +20,7 @@ def _build_runner(history: str, status: str) -> EvaluationRunner:
         [
             GDELTProvider(),
             RSSProvider(),
+            ReliefWebProvider(),
         ]
     )
 

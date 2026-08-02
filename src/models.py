@@ -66,6 +66,9 @@ class GeoPoliticalEvent:
     actors: list[str] = field(default_factory=list)
     countries: list[str] = field(default_factory=list)
     supporting_sources: list[str] = field(default_factory=list)
+    locations: list[str] = field(default_factory=list)
+    mentioned_dates: list[str] = field(default_factory=list)
+    freshness_score: float = 0.50
 
     @property
     def evidence_count(self) -> int:

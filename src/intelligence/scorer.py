@@ -41,6 +41,20 @@ TOPIC_WEIGHTS = {
 EVIDENCE_CONFIDENCE_WEIGHT = 10
 
 
+def _market_relevance(event: GeoPoliticalEvent, market: ClassifiedMarket) -> float:
+    """Measure how directly evidence metadata aligns with a market."""
+    signals = []
+    if market.event_type != EventType.OTHER:
+        signals.append(event.event_type == market.event_type)
+    if market.expected_outcome != Outcome.OTHER:
+        signals.append(event.outcome == market.expected_outcome)
+    if market.actors:
+        signals.append(any(actor in market.actors for actor in event.actors))
+    if market.countries:
+        signals.append(any(country in market.countries for country in event.countries))
+    return sum(signals) / len(signals) if signals else 0.50
+
+
 def score_market_event(
     event: GeoPoliticalEvent,
     market: ClassifiedMarket,
@@ -92,6 +106,7 @@ def score_market_event(
 
     score += int(
         event.evidence_confidence
+        * (0.5 + 0.5 * _market_relevance(event, market))
         * EVIDENCE_CONFIDENCE_WEIGHT
     )
 

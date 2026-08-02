@@ -69,3 +69,35 @@ def test_detects_politics_topic():
     EventClassifier().classify(event)
 
     assert Topic.POLITICS in event.topics
+
+
+def test_extracts_location_date_and_significance():
+    event = create_event(
+        "Missile strike near Kyiv on August 2, 2026"
+    )
+
+    EventClassifier().classify(event)
+
+    assert event.event_type == EventType.MILITARY_STRIKE
+    assert "Kyiv" in event.locations
+    assert "Ukraine" in event.countries
+    assert "august 2, 2026" in event.mentioned_dates
+    assert event.significance == .85
+
+
+def test_economic_strike_is_not_misclassified_as_military():
+    event = create_event("Workers strike over inflation and wages")
+
+    EventClassifier().classify(event)
+
+    assert event.event_type == EventType.ECONOMIC
+
+
+def test_preserves_structured_provider_country_metadata():
+    event = create_event("Government announces emergency measures")
+    event.country = "Ukraine"
+
+    EventClassifier().classify(event)
+
+    assert event.countries == ["Ukraine"]
+    assert event.locations == ["Ukraine"]

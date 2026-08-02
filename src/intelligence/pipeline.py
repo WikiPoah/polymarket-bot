@@ -6,6 +6,7 @@ of geopolitical events against active Polymarket markets.
 """
 
 from src.intelligence.classification import EventType
+from src.intelligence.outcomes import Outcome
 from src.intelligence.client import IntelligenceClient
 from src.intelligence.classifier import EventClassifier
 from src.intelligence.market_classifier import MarketClassifier
@@ -83,7 +84,12 @@ class IntelligencePipeline:
                 and "CCP" in event.actors
             )
 
-            if actor_match or ccp_match:
+            leadership_evidence = (
+                event.event_type == EventType.LEADERSHIP
+                or event.outcome == Outcome.LEADER_REMOVED
+            )
+
+            if leadership_evidence and (actor_match or ccp_match):
                 return True
 
             if (
@@ -100,6 +106,12 @@ class IntelligencePipeline:
         #
         # Other markets use actor/country matching.
         #
+
+        if (
+            market.event_type != EventType.OTHER
+            and event.event_type != market.event_type
+        ):
+            return False
 
         if market.actors:
 

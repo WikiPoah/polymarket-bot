@@ -211,11 +211,17 @@ def test_client_continues_after_provider_error():
 
     event = create_event("Available provider event")
 
-    events = IntelligenceClient(
+    client = IntelligenceClient(
         [
             FailingProvider(),
             FakeProvider([event]),
         ]
-    ).fetch()
+    )
+    events = client.fetch()
 
     assert events == [event]
+    assert client.provider_status == {
+        "FailingProvider": "ERROR",
+        "FakeProvider": "OK",
+    }
+    assert client.provider_errors == ["FailingProvider: Provider unavailable"]

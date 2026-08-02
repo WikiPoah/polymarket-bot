@@ -42,6 +42,17 @@ class IntelligencePipeline:
         self._paper_trader = paper_trader
         self._portfolio_risk = PortfolioRiskManager()
 
+    @property
+    def provider_status(self) -> dict[str, str]:
+        return self._client.provider_status
+
+    @property
+    def provider_errors(self) -> list[str]:
+        return self._client.provider_errors
+
+    def reset_provider_status(self) -> None:
+        self._client.reset_status()
+
     def _is_relevant(
         self,
         event: GeoPoliticalEvent,

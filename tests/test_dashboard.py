@@ -9,6 +9,7 @@ from src.dashboard.demo import create_demo_history
 from src.dashboard.server import create_server
 from src.paper_trading.history import PaperTradingRecorder
 from src.paper_trading.models import PaperDecision
+from src.monitoring import RunStatus, SystemStatusStore
 
 
 def make_record(**changes):
@@ -37,11 +38,39 @@ def test_dashboard_data_generation(tmp_path):
 
 
 def test_dashboard_empty_state(tmp_path):
-    data = DashboardDataBuilder(PaperTradingRecorder(tmp_path / "missing.json")).build()
+    data = DashboardDataBuilder(
+        PaperTradingRecorder(tmp_path / "missing.json"),
+        SystemStatusStore(tmp_path / "missing-status.json"),
+    ).build()
     assert data["current_opportunities"] == []
     assert data["history"] == []
     assert data["performance"]["total_decisions"] == 0
     assert data["breakdowns"] == {"event_type": {}, "confidence": {}, "evidence_strength": {}}
+    assert data["system"]["health"] == "UNKNOWN"
+    assert data["system"]["latest_run"] is None
+    assert data["recent_activity"] == []
+
+
+def test_dashboard_reports_system_status_and_freshness(tmp_path):
+    store = SystemStatusStore(tmp_path / "status.json")
+    store.record(RunStatus(
+        started_at="2026-01-01T00:00:00+00:00",
+        completed_at="2026-01-01T00:01:00+00:00",
+        success=True,
+        markets_analyzed=4,
+        decisions_generated=2,
+        provider_status={"RSSProvider": "ERROR"},
+        errors=["RSSProvider: unavailable"],
+    ))
+
+    data = DashboardDataBuilder(
+        PaperTradingRecorder(tmp_path / "missing.json"), store,
+    ).build()
+
+    assert data["system"]["health"] == "DEGRADED"
+    assert data["system"]["latest_run"]["markets_analyzed"] == 4
+    assert data["system"]["last_successful_run"] == "2026-01-01T00:01:00+00:00"
+    assert data["system"]["data_freshness"] == "2026-01-01T00:01:00+00:00"
 
 
 def test_demo_history_is_locally_available(tmp_path):

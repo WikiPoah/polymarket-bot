@@ -36,10 +36,12 @@ class PaperTradingRecorder:
 
     def save(self, decisions: list[PaperDecision]) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.path.write_text(
+        temporary = self.path.with_suffix(f"{self.path.suffix}.tmp")
+        temporary.write_text(
             json.dumps([decision.to_dict() for decision in decisions], indent=2),
             encoding="utf-8",
         )
+        temporary.replace(self.path)
 
     def record(self, decision: StrategyDecision) -> PaperDecision:
         paper_decision = PaperDecision.from_strategy_decision(decision)

@@ -1,6 +1,6 @@
-"""
-Application entry point.
-"""
+"""Application entry point for one-shot or continuous paper evaluation."""
+
+import argparse
 
 from src.api import PolymarketAPI
 from src.filters import filter_geopolitical_markets
@@ -9,40 +9,12 @@ from src.intelligence.pipeline import IntelligencePipeline
 from src.intelligence.providers.gdelt import GDELTProvider
 from src.intelligence.providers.rss import RSSProvider
 from src.paper_trading.history import PaperTradingRecorder
+from src.monitoring import SystemStatusStore
+from src.runner import EvaluationResult, EvaluationRunner
 
 
-def main() -> None:
-    """
-    Run the trading bot.
-    """
-
-    print("Connecting to Polymarket...\n")
-
-    api = PolymarketAPI()
-
-    try:
-        markets = api.get_active_markets()
-
-    except RuntimeError as error:
-        print(f"Error: {error}")
-        return
-
-    print("Connected successfully.\n")
-
-    print(f"Retrieved {len(markets)} active markets.")
-
-    markets = filter_geopolitical_markets(markets)
-
-    print(
-        f"Found {len(markets)} geopolitical markets.\n"
-    )
-
-    if not markets:
-        print("No geopolitical markets found.")
-        return
-
-    print("Retrieving intelligence...\n")
-
+def _build_runner(history: str, status: str) -> EvaluationRunner:
+    recorder = PaperTradingRecorder(history)
     intelligence_client = IntelligenceClient(
         [
             GDELTProvider(),
@@ -52,22 +24,37 @@ def main() -> None:
 
     pipeline = IntelligencePipeline(
         intelligence_client,
-        paper_trader=PaperTradingRecorder(),
+        paper_trader=recorder,
+    )
+    return EvaluationRunner(
+        market_source=PolymarketAPI(),
+        pipeline=pipeline,
+        status_store=SystemStatusStore(status),
+        market_filter=filter_geopolitical_markets,
     )
 
-    decisions = pipeline.run(markets)
 
-    if not decisions:
+def _print_result(result: EvaluationResult) -> None:
+    status = result.status
+    if not status.success:
+        print("Evaluation failed:")
+        for error in status.errors:
+            print(f"  - {error}")
+        return
+
+    print(f"Analysed {status.markets_analyzed} geopolitical markets.")
+    print(f"Generated {status.decisions_generated} trading decisions.")
+    if status.errors:
+        print("Provider warnings:")
+        for error in status.errors:
+            print(f"  - {error}")
+    if not result.decisions:
         print("No trading opportunities found.")
         return
 
-    print(
-        f"Found {len(decisions)} trading decisions.\n"
-    )
-
     print("=" * 100)
 
-    for decision in decisions:
+    for decision in result.decisions:
 
         opportunity = decision.opportunity
 
@@ -152,6 +139,30 @@ def main() -> None:
                 print(f"  - {reason}")
 
         print("=" * 100)
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Run paper-trading evaluation")
+    parser.add_argument(
+        "--interval",
+        type=float,
+        help="Continuously evaluate at this interval in seconds",
+    )
+    parser.add_argument("--history", default="data/paper_trading_history.json")
+    parser.add_argument("--status", default="data/system_status.json")
+    args = parser.parse_args()
+
+    runner = _build_runner(args.history, args.status)
+    if args.interval is None:
+        print("Running Polymarket evaluation...\n")
+        _print_result(runner.run_once())
+        return
+
+    print(f"Running continuously every {args.interval:g} seconds. Press Ctrl+C to stop.")
+    try:
+        runner.run_forever(args.interval, on_result=_print_result)
+    except KeyboardInterrupt:
+        print("Evaluation runner stopped.")
 
 
 if __name__ == "__main__":

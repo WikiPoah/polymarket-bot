@@ -5,18 +5,30 @@ from typing import Any
 from src.paper_trading.analytics import PerformanceAnalytics
 from src.paper_trading.history import PaperTradingRecorder
 from src.paper_trading.models import PaperDecision
+from src.monitoring import RunStatus, SystemStatusStore
 
 
 class DashboardDataBuilder:
     """Adapt persisted decisions into JSON-ready dashboard sections."""
 
-    def __init__(self, recorder: PaperTradingRecorder | None = None) -> None:
+    def __init__(
+        self,
+        recorder: PaperTradingRecorder | None = None,
+        status_store: SystemStatusStore | None = None,
+    ) -> None:
         self.recorder = recorder or PaperTradingRecorder()
+        self.status_store = status_store or SystemStatusStore()
         self.analytics = PerformanceAnalytics()
 
     def build(self) -> dict[str, Any]:
         decisions = self.recorder.load()
         report = self.analytics.analyze(decisions)
+        statuses = self.status_store.load()
+        latest = statuses[-1] if statuses else None
+        last_successful = next(
+            (item for item in reversed(statuses) if item.success),
+            None,
+        )
         return {
             "current_opportunities": [
                 self._decision_view(decision)
@@ -50,7 +62,33 @@ class DashboardDataBuilder:
                 for bucket in report.calibration
             ],
             "brier_score": report.brier_score,
+            "system": {
+                "health": self._health(latest),
+                "latest_run": self._run_view(latest),
+                "last_successful_run": (
+                    last_successful.completed_at if last_successful else None
+                ),
+                "data_freshness": (
+                    last_successful.completed_at if last_successful else None
+                ),
+                "recent_runs": [self._run_view(item) for item in statuses[-10:][::-1]],
+            },
+            "recent_activity": [
+                self._decision_view(decision) for decision in decisions[-10:][::-1]
+            ],
         }
+
+    @staticmethod
+    def _health(status: RunStatus | None) -> str:
+        if status is None:
+            return "UNKNOWN"
+        if not status.success:
+            return "ERROR"
+        return "DEGRADED" if status.errors else "HEALTHY"
+
+    @staticmethod
+    def _run_view(status: RunStatus | None) -> dict[str, Any] | None:
+        return status.to_dict() if status else None
 
     @staticmethod
     def _summary_view(summary) -> dict[str, Any]:

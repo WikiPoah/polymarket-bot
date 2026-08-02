@@ -10,6 +10,7 @@ from src.intelligence.providers.base import (
 from src.intelligence.exceptions import (
     IntelligenceProviderError,
 )
+from src.intelligence.evidence import aggregate_events
 from src.models import GeoPoliticalEvent
 
 
@@ -82,4 +83,4 @@ class IntelligenceClient:
 
                 results.extend(provider_results)
 
-        return results
+        return aggregate_events(results)

@@ -55,6 +55,8 @@ class GeoPoliticalEvent:
     source_url: str
     published_at: datetime
     source: str = ""
+    source_reliability: float = 0.50
+    evidence_confidence: float = 0.50
 
     event_type: EventType = EventType.OTHER
     outcome: Outcome = Outcome.OTHER
@@ -63,6 +65,25 @@ class GeoPoliticalEvent:
     topics: list[Topic] = field(default_factory=list)
     actors: list[str] = field(default_factory=list)
     countries: list[str] = field(default_factory=list)
+    supporting_sources: list[str] = field(default_factory=list)
+
+    @property
+    def evidence_count(self) -> int:
+        """Number of independent sources supporting this event."""
+
+        return len(self.supporting_sources) or 1
+
+    @property
+    def supporting_source_count(self) -> int:
+        """Compatibility alias for the supporting-source count."""
+
+        return self.evidence_count
+
+    @property
+    def source_confidence(self) -> float:
+        """Alias for the combined evidence confidence."""
+
+        return self.evidence_confidence
 
 
 @dataclass(slots=True)

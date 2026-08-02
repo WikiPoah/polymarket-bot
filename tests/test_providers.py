@@ -7,6 +7,7 @@ from datetime import datetime
 import pytest
 
 from src.intelligence.client import IntelligenceClient
+from src.intelligence.evidence import get_source_reliability
 from src.intelligence.exceptions import IntelligenceProviderError
 from src.intelligence.providers.base import IntelligenceProvider
 from src.intelligence.providers.gdelt import GDELTProvider
@@ -158,6 +159,52 @@ def test_client_aggregates_events_from_multiple_providers():
         isinstance(event, GeoPoliticalEvent)
         for event in events
     )
+
+
+def test_source_reliability_is_configurable():
+
+    assert get_source_reliability("GDELT") == 0.90
+    assert get_source_reliability("unknown source") == 0.50
+
+
+def test_client_deduplicates_and_combines_sources():
+
+    first_event = create_event("Xi Jinping leadership rumours")
+    first_event.source = "GDELT"
+    first_event.source_url = "https://gdelt.example/event"
+
+    second_event = create_event("Xi Jinping leadership rumours")
+    second_event.source = "BBC World"
+    second_event.source_url = "https://bbc.example/event"
+
+    events = IntelligenceClient(
+        [
+            FakeProvider([first_event]),
+            FakeProvider([second_event]),
+        ]
+    ).fetch()
+
+    assert len(events) == 1
+    assert events[0].supporting_sources == [
+        "GDELT",
+        "BBC World",
+    ]
+    assert events[0].supporting_source_count == 2
+    assert events[0].evidence_confidence > 0.90
+
+
+def test_single_source_event_remains_valid():
+
+    event = create_event("Single source report")
+    event.source = "BBC World"
+
+    events = IntelligenceClient(
+        [FakeProvider([event])]
+    ).fetch()
+
+    assert len(events) == 1
+    assert events[0].supporting_source_count == 1
+    assert events[0].evidence_confidence == 0.80
 
 
 def test_client_continues_after_provider_error():

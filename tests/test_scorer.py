@@ -93,3 +93,24 @@ def test_generic_china_economic_event_scores_below_leadership_event():
 
     assert scored_events[0].event is leadership_event
     assert scored_events[0].score > scored_events[1].score
+
+
+def test_multiple_sources_increase_event_score():
+    event = create_event(
+        event_type=EventType.LEADERSHIP,
+        actors=["Xi Jinping"],
+        countries=["China"],
+    )
+    event.evidence_confidence = 0.50
+    one_source_score = score_events(
+        [event],
+        create_market(),
+    )[0].score
+
+    event.evidence_confidence = 0.95
+    multiple_source_score = score_events(
+        [event],
+        create_market(),
+    )[0].score
+
+    assert multiple_source_score > one_source_score

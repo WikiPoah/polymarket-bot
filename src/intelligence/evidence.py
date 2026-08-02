@@ -1,0 +1,103 @@
+"""
+Source reliability and cross-provider evidence aggregation.
+"""
+
+import re
+
+from src.config import SOURCE_RELIABILITY
+from src.models import GeoPoliticalEvent
+
+
+def get_source_reliability(source: str) -> float:
+    """Return the configured reliability for a source name."""
+
+    return SOURCE_RELIABILITY.get(
+        source,
+        SOURCE_RELIABILITY["default"],
+    )
+
+
+def _event_keys(event: GeoPoliticalEvent) -> list[str]:
+    """Build URL and normalized-title keys for duplicate articles."""
+
+    keys: list[str] = []
+
+    if event.source_url:
+        keys.append(
+            f"url:{event.source_url.strip().lower()}"
+        )
+
+    title = re.sub(
+        r"[^a-z0-9]+",
+        " ",
+        event.title.lower(),
+    ).strip()
+
+    if title:
+        keys.append(f"title:{title}")
+
+    return keys or ["title:"]
+
+
+def _prepare_event(event: GeoPoliticalEvent) -> None:
+    """Initialize source evidence metadata on a provider event."""
+
+    source = event.source or event.category or "unknown"
+    event.source_reliability = get_source_reliability(source)
+    event.evidence_confidence = event.source_reliability
+
+    if not event.supporting_sources:
+        event.supporting_sources.append(source)
+
+
+def _merge_event(
+    target: GeoPoliticalEvent,
+    duplicate: GeoPoliticalEvent,
+) -> None:
+    """Merge independent source evidence into the retained event."""
+
+    source = duplicate.source or duplicate.category or "unknown"
+
+    if source in target.supporting_sources:
+        return
+
+    target.supporting_sources.append(source)
+    target.evidence_confidence = min(
+        1.0,
+        1.0
+        - (
+            (1.0 - target.evidence_confidence)
+            * (1.0 - duplicate.source_reliability)
+        ),
+    )
+
+
+def aggregate_events(
+    events: list[GeoPoliticalEvent],
+) -> list[GeoPoliticalEvent]:
+    """Deduplicate provider events and merge independent evidence."""
+
+    aggregated: list[GeoPoliticalEvent] = []
+    by_key: dict[str, GeoPoliticalEvent] = {}
+
+    for event in events:
+        _prepare_event(event)
+        keys = _event_keys(event)
+        existing = next(
+            (
+                by_key[key]
+                for key in keys
+                if key in by_key
+            ),
+            None,
+        )
+
+        if existing is None:
+            for key in keys:
+                by_key[key] = event
+            aggregated.append(event)
+            continue
+
+        _merge_event(existing, event)
+
+    return aggregated

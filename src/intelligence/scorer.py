@@ -38,6 +38,9 @@ TOPIC_WEIGHTS = {
 }
 
 
+EVIDENCE_CONFIDENCE_WEIGHT = 10
+
+
 def score_market_event(
     event: GeoPoliticalEvent,
     market: ClassifiedMarket,
@@ -87,6 +90,11 @@ def score_market_event(
     if event.confidence is not None:
         score += int(event.confidence * 10)
 
+    score += int(
+        event.evidence_confidence
+        * EVIDENCE_CONFIDENCE_WEIGHT
+    )
+
     return min(score, 100)
 
 
@@ -110,6 +118,11 @@ def score_event(event: GeoPoliticalEvent) -> int:
 
     if event.confidence is not None:
         score += int(event.confidence * 10)
+
+    score += int(
+        event.evidence_confidence
+        * EVIDENCE_CONFIDENCE_WEIGHT
+    )
 
     return min(score, 100)
 

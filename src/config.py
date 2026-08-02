@@ -42,6 +42,15 @@ RSS_FEEDS = [
     },
 ]
 
+# Configurable source reliability values used when combining evidence.
+# The scorer consumes the resulting event confidence, not these values.
+SOURCE_RELIABILITY = {
+    "GDELT": 0.90,
+    "BBC World": 0.80,
+    "RSS": 0.70,
+    "default": 0.50,
+}
+
 # Keywords used to identify geopolitical markets.
 #
 # The filtering system searches market questions and event titles

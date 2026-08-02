@@ -7,6 +7,7 @@ from datetime import datetime
 import pytest
 
 from src.intelligence.client import IntelligenceClient
+from src.intelligence.exceptions import IntelligenceProviderError
 from src.intelligence.providers.base import IntelligenceProvider
 from src.intelligence.providers.gdelt import GDELTProvider
 from src.intelligence.providers.news_api import NewsAPIProvider
@@ -46,6 +47,20 @@ class FakeProvider(IntelligenceProvider):
         sort: str = "recent",
     ) -> list[GeoPoliticalEvent]:
         return self._events
+
+
+class FailingProvider(IntelligenceProvider):
+    """
+    Provider that simulates an unavailable external source.
+    """
+
+    def fetch(
+        self,
+        query: str | None = None,
+        limit: int = 100,
+        sort: str = "recent",
+    ) -> list[GeoPoliticalEvent]:
+        raise IntelligenceProviderError("Provider unavailable")
 
 
 def test_provider_interface_requires_fetch_implementation():
@@ -143,3 +158,17 @@ def test_client_aggregates_events_from_multiple_providers():
         isinstance(event, GeoPoliticalEvent)
         for event in events
     )
+
+
+def test_client_continues_after_provider_error():
+
+    event = create_event("Available provider event")
+
+    events = IntelligenceClient(
+        [
+            FailingProvider(),
+            FakeProvider([event]),
+        ]
+    ).fetch()
+
+    assert events == [event]

@@ -54,6 +54,7 @@ class GeoPoliticalEvent:
 
     source_url: str
     published_at: datetime
+    source: str = ""
 
     event_type: EventType = EventType.OTHER
     outcome: Outcome = Outcome.OTHER

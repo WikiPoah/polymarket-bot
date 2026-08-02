@@ -33,6 +33,15 @@ GDELT_API_KEY = os.getenv("GDELT_API_KEY")
 # Maximum number of intelligence records to retrieve
 DEFAULT_INTELLIGENCE_LIMIT = 25
 
+# RSS intelligence feed configuration. Each feed is converted into
+# GeoPoliticalEvent objects before entering the shared pipeline.
+RSS_FEEDS = [
+    {
+        "name": "BBC World",
+        "url": "https://feeds.bbci.co.uk/news/world/rss.xml",
+    },
+]
+
 # Keywords used to identify geopolitical markets.
 #
 # The filtering system searches market questions and event titles

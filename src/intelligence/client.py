@@ -7,6 +7,9 @@ Coordinates one or more intelligence providers.
 from src.intelligence.providers.base import (
     IntelligenceProvider,
 )
+from src.intelligence.exceptions import (
+    IntelligenceProviderError,
+)
 from src.models import GeoPoliticalEvent
 
 
@@ -55,11 +58,14 @@ class IntelligenceClient:
 
         for provider in self._providers:
 
-            provider_results = provider.fetch(
-                query=query,
-                limit=limit,
-                sort=sort,
-            )
+            try:
+                provider_results = provider.fetch(
+                    query=query,
+                    limit=limit,
+                    sort=sort,
+                )
+            except IntelligenceProviderError:
+                continue
 
             if provider_results:
                 if not all(

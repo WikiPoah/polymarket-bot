@@ -49,6 +49,7 @@ def parse_gdelt_event(
             published_at=datetime.fromisoformat(
                 event["processed_at"].replace("Z", "+00:00")
             ),
+            source="GDELT",
         )
 
     except KeyError as error:

@@ -7,6 +7,7 @@ from src.filters import filter_geopolitical_markets
 from src.intelligence.client import IntelligenceClient
 from src.intelligence.pipeline import IntelligencePipeline
 from src.intelligence.providers.gdelt import GDELTProvider
+from src.intelligence.providers.rss import RSSProvider
 
 
 def main() -> None:
@@ -44,6 +45,7 @@ def main() -> None:
     intelligence_client = IntelligenceClient(
         [
             GDELTProvider(),
+            RSSProvider(),
         ]
     )
 

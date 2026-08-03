@@ -21,6 +21,7 @@ from src.strategy.engine import (
 )
 from src.paper_trading.history import PaperTradingRecorder
 from src.strategy.portfolio_risk import PortfolioRiskManager
+from datetime import datetime
 
 
 class IntelligencePipeline:
@@ -32,6 +33,7 @@ class IntelligencePipeline:
         self,
         client: IntelligenceClient,
         paper_trader: PaperTradingRecorder | None = None,
+        as_of: datetime | None = None,
     ) -> None:
 
         self._client = client
@@ -39,7 +41,7 @@ class IntelligencePipeline:
         self._outcome_classifier = OutcomeClassifier()
         self._market_classifier = MarketClassifier()
         self._query_builder = MarketQueryBuilder()
-        self._strategy_engine = StrategyEngine()
+        self._strategy_engine = StrategyEngine(as_of=as_of)
         self._paper_trader = paper_trader
         self._portfolio_risk = PortfolioRiskManager()
 

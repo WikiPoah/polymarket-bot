@@ -5,6 +5,8 @@ The strategy engine consumes TradingOpportunity objects produced by the
 intelligence pipeline and determines whether a market is worth trading.
 """
 
+from datetime import datetime
+
 from dataclasses import dataclass
 
 from src.models import TradingOpportunity
@@ -46,8 +48,8 @@ class StrategyEngine:
     Consumes trading opportunities and produces trading decisions.
     """
 
-    def __init__(self) -> None:
-        self._probability_estimator = ProbabilityEstimator()
+    def __init__(self, as_of: datetime | None = None) -> None:
+        self._probability_estimator = ProbabilityEstimator(as_of=as_of)
         self._market_probability = MarketProbabilityExtractor()
         self._ev_calculator = ExpectedValueCalculator()
         self._position_sizer = PositionSizer()

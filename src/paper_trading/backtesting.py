@@ -119,9 +119,9 @@ class BacktestEngine:
         balance = 0.0
         peak = 0.0
         maximum = 0.0
-        for decision in decisions:
-            if decision.result not in {"WIN", "LOSS"}:
-                continue
+        settled = [item for item in decisions if item.result in {"WIN", "LOSS"}]
+        settled.sort(key=lambda item: item.resolved_at or item.timestamp)
+        for decision in settled:
             balance += decision.profit_loss
             peak = max(peak, balance)
             maximum = max(maximum, peak - balance)

@@ -11,6 +11,14 @@ from src.paper_trading.analytics import (
     format_report,
 )
 from src.paper_trading.backtesting import BacktestConfig, BacktestEngine, BacktestReport
+from src.paper_trading.historical import (
+    HistoricalBacktestReport,
+    HistoricalIntelligenceRecord,
+    HistoricalIntelligenceStore,
+    HistoricalMarketSnapshot,
+    HistoricalMarketStore,
+    HistoricalReplayEngine,
+)
 
 __all__ = [
     "PaperDecision",
@@ -25,4 +33,10 @@ __all__ = [
     "BacktestConfig",
     "BacktestEngine",
     "BacktestReport",
+    "HistoricalBacktestReport",
+    "HistoricalIntelligenceRecord",
+    "HistoricalIntelligenceStore",
+    "HistoricalMarketSnapshot",
+    "HistoricalMarketStore",
+    "HistoricalReplayEngine",
 ]

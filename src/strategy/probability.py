@@ -15,6 +15,9 @@ class ProbabilityEstimator:
     Estimates the probability of a trading opportunity succeeding.
     """
 
+    def __init__(self, as_of: datetime | None = None) -> None:
+        self.as_of = as_of
+
     def estimate(self, opportunity: TradingOpportunity) -> float:
         """
         Estimate the probability of success.
@@ -73,7 +76,7 @@ class ProbabilityEstimator:
         # Event recency
         #
 
-        now = datetime.now(timezone.utc)
+        now = self.as_of or datetime.now(timezone.utc)
 
         published = event.published_at
 

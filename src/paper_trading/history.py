@@ -94,15 +94,25 @@ class PaperTradingRecorder:
         for decision in decisions:
             if decision.id != decision_id:
                 continue
-            self.calculate_outcome(decision, resolved_yes)
+            self.calculate_outcome(
+                decision,
+                resolved_yes,
+                resolved_at=datetime.now(timezone.utc).isoformat(),
+            )
             self.save(decisions)
             return decision
         raise KeyError(f"Unknown paper decision: {decision_id}")
 
     @staticmethod
-    def calculate_outcome(decision: PaperDecision, resolved_yes: bool) -> PaperDecision:
+    def calculate_outcome(
+        decision: PaperDecision,
+        resolved_yes: bool,
+        resolved_at: str | None = None,
+    ) -> PaperDecision:
         """Apply binary-market settlement math to a paper decision in memory."""
         decision.resolved_yes = resolved_yes
+        if resolved_at is not None:
+            decision.resolved_at = resolved_at
         if decision.decision == StrategyAction.BUY_YES.value:
             won = resolved_yes
             decision.profit_loss = (

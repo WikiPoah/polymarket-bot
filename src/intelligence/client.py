@@ -14,6 +14,7 @@ from src.intelligence.exceptions import (
 )
 from src.intelligence.evidence import aggregate_events
 from src.models import GeoPoliticalEvent
+from typing import Callable
 
 
 class IntelligenceClient:
@@ -24,6 +25,8 @@ class IntelligenceClient:
     def __init__(
         self,
         providers: list[IntelligenceProvider],
+        evidence_time: datetime | None = None,
+        event_sink: Callable[[list[GeoPoliticalEvent]], None] | None = None,
     ) -> None:
         """
         Initialise the intelligence client.
@@ -33,6 +36,8 @@ class IntelligenceClient:
                 Intelligence providers to query.
         """
         self._providers = providers
+        self._evidence_time = evidence_time
+        self._event_sink = event_sink
         self._provider_status: dict[str, str] = {}
         self._provider_errors: list[str] = []
         self._provider_details: dict[str, dict] = {
@@ -155,4 +160,8 @@ class IntelligenceClient:
                         0.0, (now - latest).total_seconds()
                     )
 
-        return aggregate_events(results)
+        if self._event_sink is not None and results:
+            # Archive independent provider reports before evidence aggregation.
+            self._event_sink(results)
+        aggregated = aggregate_events(results, now=self._evidence_time)
+        return aggregated

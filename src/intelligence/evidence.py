@@ -65,12 +65,15 @@ def _event_keys(event: GeoPoliticalEvent) -> list[str]:
     return keys or ["title:"]
 
 
-def _prepare_event(event: GeoPoliticalEvent) -> None:
+def _prepare_event(
+    event: GeoPoliticalEvent,
+    now: datetime | None = None,
+) -> None:
     """Initialize source evidence metadata on a provider event."""
 
     source = event.source or event.category or "unknown"
     event.source_reliability = get_source_reliability(source)
-    event.freshness_score = get_freshness_score(event.published_at)
+    event.freshness_score = get_freshness_score(event.published_at, now)
     event.evidence_confidence = (
         event.source_reliability * event.freshness_score
     )
@@ -103,6 +106,7 @@ def _merge_event(
 
 def aggregate_events(
     events: list[GeoPoliticalEvent],
+    now: datetime | None = None,
 ) -> list[GeoPoliticalEvent]:
     """Deduplicate provider events and merge independent evidence."""
 
@@ -110,7 +114,7 @@ def aggregate_events(
     by_key: dict[str, GeoPoliticalEvent] = {}
 
     for event in events:
-        _prepare_event(event)
+        _prepare_event(event, now)
         keys = _event_keys(event)
         existing = next(
             (

@@ -37,6 +37,7 @@ class PaperDecision:
     record_version: int = 2
     run_id: str = ""
     opportunity_id: str = ""
+    resolved_at: str | None = None
 
     @classmethod
     def from_strategy_decision(
@@ -103,6 +104,7 @@ class PaperDecision:
         values.setdefault("record_version", 1)
         values.setdefault("run_id", "")
         values.setdefault("opportunity_id", "")
+        values.setdefault("resolved_at", None)
         allowed = cls.__dataclass_fields__
         decision = cls(**{key: value for key, value in values.items() if key in allowed})
         if not decision.opportunity_id:

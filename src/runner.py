@@ -8,6 +8,7 @@ from uuid import uuid4
 from datetime import timedelta
 
 from src.paper_trading.history import PaperTradingRecorder
+from src.paper_trading.historical import HistoricalMarketStore
 
 from src.monitoring import RunStatus, SystemStatusStore
 from src.strategy.engine import StrategyDecision
@@ -45,6 +46,7 @@ class EvaluationRunner:
         recorder: PaperTradingRecorder | None = None,
         duplicate_window_seconds: float = 3600.0,
         run_id_factory: Callable[[], str] | None = None,
+        market_history: HistoricalMarketStore | None = None,
     ) -> None:
         self.market_source = market_source
         self.pipeline = pipeline
@@ -54,6 +56,7 @@ class EvaluationRunner:
         self.recorder = recorder
         self.duplicate_window_seconds = duplicate_window_seconds
         self.run_id_factory = run_id_factory or (lambda: str(uuid4()))
+        self.market_history = market_history
         if duplicate_window_seconds < 0:
             raise ValueError("duplicate_window_seconds cannot be negative")
 
@@ -72,7 +75,12 @@ class EvaluationRunner:
             )
 
         try:
-            markets = self.market_filter(self.market_source.get_active_markets())
+            raw_markets = self.market_source.get_active_markets()
+            if self.market_history is not None:
+                observed_at = self.clock()
+                for market in raw_markets:
+                    self.market_history.capture_market(market, observed_at)
+            markets = self.market_filter(raw_markets)
             markets_analyzed = len(markets)
             decisions = self.pipeline.run(markets) if markets else []
             errors.extend(self.pipeline.provider_errors)

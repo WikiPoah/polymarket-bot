@@ -10,18 +10,26 @@ from src.intelligence.providers.gdelt import GDELTProvider
 from src.intelligence.providers.rss import RSSProvider
 from src.intelligence.providers.reliefweb import ReliefWebProvider
 from src.paper_trading.history import PaperTradingRecorder
+from src.paper_trading.historical import HistoricalIntelligenceStore, HistoricalMarketStore
 from src.monitoring import SystemStatusStore
 from src.runner import EvaluationResult, EvaluationRunner
 
 
-def _build_runner(history: str, status: str) -> EvaluationRunner:
+def _build_runner(
+    history: str,
+    status: str,
+    market_history: str,
+    intelligence_history: str,
+) -> EvaluationRunner:
     recorder = PaperTradingRecorder(history)
+    intelligence_store = HistoricalIntelligenceStore(intelligence_history)
     intelligence_client = IntelligenceClient(
         [
             GDELTProvider(),
             RSSProvider(),
             ReliefWebProvider(),
-        ]
+        ],
+        event_sink=intelligence_store.capture_events,
     )
 
     pipeline = IntelligencePipeline(
@@ -34,6 +42,7 @@ def _build_runner(history: str, status: str) -> EvaluationRunner:
         status_store=SystemStatusStore(status),
         market_filter=filter_geopolitical_markets,
         recorder=recorder,
+        market_history=HistoricalMarketStore(market_history),
     )
 
 
@@ -153,9 +162,16 @@ def main() -> None:
     )
     parser.add_argument("--history", default="data/paper_trading_history.json")
     parser.add_argument("--status", default="data/system_status.json")
+    parser.add_argument("--market-history", default="data/historical_markets.json")
+    parser.add_argument(
+        "--intelligence-history",
+        default="data/historical_intelligence.json",
+    )
     args = parser.parse_args()
 
-    runner = _build_runner(args.history, args.status)
+    runner = _build_runner(
+        args.history, args.status, args.market_history, args.intelligence_history,
+    )
     if args.interval is None:
         print("Running Polymarket evaluation...\n")
         _print_result(runner.run_once())

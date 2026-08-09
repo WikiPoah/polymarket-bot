@@ -1,6 +1,6 @@
 <!-- File-Version: 1.0.0 -->
 
-# Codex Instructions
+# Claude Instructions
 
 Use [AGENTS.md](AGENTS.md) as the authoritative repository instructions.
 

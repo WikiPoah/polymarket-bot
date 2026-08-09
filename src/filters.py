@@ -1,3 +1,4 @@
+# File-Version: 1.0.0
 """
 Filtering utilities.
 
@@ -9,6 +10,44 @@ interest.
 import re
 
 from src.config import GEOPOLITICAL_KEYWORDS
+
+
+SPORTS_TEXT_PATTERNS = (
+    r"\besports?\b",
+    r"\bbo[1-7]\b",
+    r"^(?:lol|nba|nfl|nhl|mlb|wnba|epl):",
+)
+
+
+def _is_sports_market(market: dict) -> bool:
+    """Reject sports contracts before ambiguous geopolitical keyword checks."""
+
+    if market.get("sportsMarketType") or market.get("gameId"):
+        return True
+
+    events = market.get("events", [])
+    if not isinstance(events, list):
+        events = []
+
+    text_parts = [str(market.get("question") or "")]
+
+    for event in events:
+        if not isinstance(event, dict):
+            continue
+        if event.get("sportsMarketType") or event.get("gameId"):
+            return True
+        if isinstance(event.get("eventMetadata"), dict) and event["eventMetadata"].get(
+            "league"
+        ):
+            return True
+        text_parts.append(str(event.get("title") or ""))
+
+    search_text = " ".join(text_parts).lower()
+
+    return any(
+        re.search(pattern, search_text, flags=re.IGNORECASE)
+        for pattern in SPORTS_TEXT_PATTERNS
+    )
 
 
 def _contains_keyword(text: str) -> bool:
@@ -47,12 +86,19 @@ def is_geopolitical_market(market: dict) -> bool:
         True if the market matches at least one keyword.
     """
 
-    search_text = market.get("question", "")
+    if _is_sports_market(market):
+        return False
+
+    search_text = str(market.get("question") or "")
 
     events = market.get("events", [])
 
+    if not isinstance(events, list):
+        events = []
+
     for event in events:
-        search_text += f" {event.get('title', '')}"
+        if isinstance(event, dict):
+            search_text += f" {event.get('title') or ''}"
 
     return _contains_keyword(search_text)
 

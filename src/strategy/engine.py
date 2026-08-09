@@ -1,3 +1,4 @@
+# File-Version: 1.0.0
 """
 Strategy engine.
 
@@ -89,7 +90,7 @@ class StrategyEngine:
             2,
         )
 
-        edge, expected_value, action = (
+        edge, expected_value, proposed_action = (
             self._ev_calculator.calculate(
                 estimated_probability,
                 market_probability,
@@ -97,7 +98,17 @@ class StrategyEngine:
         )
 
         action = self._risk_manager.apply(
+            action=proposed_action,
+            edge=edge,
+            expected_value=expected_value,
+            confidence=decision_confidence,
+        )
+
+        reasons = self._explain(
+            proposed_action=proposed_action,
             action=action,
+            estimated_probability=estimated_probability,
+            market_probability=market_probability,
             edge=edge,
             expected_value=expected_value,
             confidence=decision_confidence,
@@ -122,11 +133,46 @@ class StrategyEngine:
             expected_value=expected_value,
             confidence=decision_confidence,
             position_size=position_size,
-            reasons=[
-                "Probability estimated from intelligence.",
-                "Market probability extracted from Polymarket.",
-                "Expected value calculated.",
-                "Risk rules applied.",
-                "Position size determined.",
-            ],
+            reasons=reasons,
         )
+
+    def _explain(
+        self,
+        proposed_action: StrategyAction,
+        action: StrategyAction,
+        estimated_probability: float,
+        market_probability: float,
+        edge: float,
+        expected_value: float,
+        confidence: float,
+    ) -> list[str]:
+        comparison = (
+            f"Bot estimate {estimated_probability:.1%} versus market "
+            f"{market_probability:.1%}; edge {edge:+.1%} and confidence "
+            f"{confidence:.1%}."
+        )
+        if proposed_action == StrategyAction.IGNORE:
+            return [comparison, "Ignored: the bot found no pricing edge."]
+        if action == StrategyAction.IGNORE:
+            if confidence < self._risk_manager.MIN_CONFIDENCE:
+                reason = (
+                    f"Ignored: confidence {confidence:.1%} is below the "
+                    f"required {self._risk_manager.MIN_CONFIDENCE:.1%}."
+                )
+            elif abs(edge) < self._risk_manager.MIN_EDGE:
+                reason = (
+                    f"Ignored: absolute edge {abs(edge):.1%} is below the "
+                    f"required {self._risk_manager.MIN_EDGE:.1%}."
+                )
+            elif expected_value < self._risk_manager.MIN_EXPECTED_VALUE:
+                reason = (
+                    f"Ignored: expected value {expected_value:.1%} is below "
+                    f"the required {self._risk_manager.MIN_EXPECTED_VALUE:.1%}."
+                )
+            else:
+                reason = "Ignored: the opportunity failed a strategy risk rule."
+            return [comparison, reason]
+        return [
+            comparison,
+            f"Accepted: {action.value} passed the strategy thresholds.",
+        ]

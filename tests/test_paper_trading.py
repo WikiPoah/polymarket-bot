@@ -1,3 +1,4 @@
+# File-Version: 1.1.1
 """Tests for paper-trading persistence and performance."""
 
 from datetime import datetime, timedelta
@@ -8,7 +9,6 @@ import pytest
 from src.intelligence.classification import EventType
 from src.models import GeoPoliticalEvent, ScoredEvent, TradingOpportunity
 from src.paper_trading.history import PaperTradingRecorder
-from src.paper_trading.models import PaperDecision
 from src.paper_trading.performance import PerformanceTracker
 from src.strategy.engine import StrategyDecision
 from src.strategy.expected_value import StrategyAction
@@ -40,6 +40,21 @@ def test_record_and_load_decision(tmp_path):
     assert len(loaded) == 1
     assert loaded[0].id == recorded.id
     assert loaded[0].evidence_count == 1
+
+
+def test_record_persists_strategy_rationale(tmp_path):
+    recorder = PaperTradingRecorder(tmp_path / "history.json")
+    decision = make_decision()
+    decision.reasons = [
+        "Bot estimate 70.0% versus market 40.0%.",
+        "Accepted: BUY YES passed the strategy thresholds.",
+    ]
+
+    recorded = recorder.record(decision)
+
+    assert recorded.rationale == "Accepted: BUY YES passed the strategy thresholds."
+    assert recorder.load()[0].rationale == recorded.rationale
+    assert recorder.load()[0].record_version == 3
 
 
 def test_empty_history_is_safe(tmp_path):
@@ -123,5 +138,5 @@ def test_legacy_history_migrates_to_versioned_envelope(tmp_path):
 
     assert loaded[0].record_version == 1
     assert loaded[0].opportunity_id
-    assert payload["version"] == 2
+    assert payload["version"] == 3
     assert len(payload["records"]) == 1

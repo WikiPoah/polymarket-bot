@@ -1,3 +1,4 @@
+# File-Version: 1.0.0
 """
 Unit tests for the market filtering utilities.
 """
@@ -113,4 +114,45 @@ def test_is_geopolitical_market_does_not_match_partial_words():
     }
 
     assert not is_geopolitical_market(market)
-    
+
+
+def test_lng_esports_market_is_not_geopolitical():
+    market = {
+        "question": "LoL: Invictus Gaming vs LNG Esports - Game 2 Winner",
+        "sportsMarketType": "child_moneyline",
+        "gameId": "281488",
+        "events": [],
+    }
+
+    assert not is_geopolitical_market(market)
+
+
+def test_lng_energy_market_remains_geopolitical():
+    market = {
+        "question": "Will European LNG prices rise after a supply disruption?",
+        "events": [],
+    }
+
+    assert is_geopolitical_market(market)
+
+
+def test_sports_market_with_country_keyword_is_not_geopolitical():
+    market = {
+        "question": "Will Iran win the tournament?",
+        "sportsMarketType": "moneyline",
+        "events": [],
+    }
+
+    assert not is_geopolitical_market(market)
+
+
+def test_nested_esports_metadata_is_rejected():
+    market = {
+        "question": "Will LNG win?",
+        "events": [{
+            "title": "League of Legends match",
+            "eventMetadata": {"league": "LPL"},
+        }],
+    }
+
+    assert not is_geopolitical_market(market)

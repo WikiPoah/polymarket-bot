@@ -1,3 +1,4 @@
+# File-Version: 1.0.1
 """
 Tests for the intelligence provider interface and aggregation.
 """
@@ -11,7 +12,6 @@ from src.intelligence.evidence import get_source_reliability
 from src.intelligence.exceptions import IntelligenceProviderError
 from src.intelligence.providers.base import IntelligenceProvider
 from src.intelligence.providers.gdelt import GDELTProvider
-from src.intelligence.providers.news_api import NewsAPIProvider
 from src.intelligence.providers.rss import RSSProvider
 from src.models import GeoPoliticalEvent
 
@@ -62,6 +62,17 @@ class FailingProvider(IntelligenceProvider):
         sort: str = "recent",
     ) -> list[GeoPoliticalEvent]:
         raise IntelligenceProviderError("Provider unavailable")
+
+
+class CountingProvider(FakeProvider):
+    def __init__(self, events, query_sensitive=True):
+        super().__init__(events)
+        self.query_sensitive = query_sensitive
+        self.calls = []
+
+    def fetch(self, query=None, limit=100, sort="recent"):
+        self.calls.append((query, limit, sort))
+        return super().fetch(query, limit, sort)
 
 
 def test_provider_interface_requires_fetch_implementation():
@@ -134,10 +145,9 @@ def test_gdelt_provider_returns_normalized_events(monkeypatch):
     assert events[0].title == "Leadership event"
 
 
-def test_placeholder_providers_implement_provider_interface():
+def test_rss_provider_implements_provider_interface():
 
     assert isinstance(RSSProvider(), IntelligenceProvider)
-    assert isinstance(NewsAPIProvider(), IntelligenceProvider)
 
 
 def test_client_aggregates_events_from_multiple_providers():
@@ -159,6 +169,47 @@ def test_client_aggregates_events_from_multiple_providers():
         isinstance(event, GeoPoliticalEvent)
         for event in events
     )
+
+
+def test_client_reuses_identical_provider_query_until_reset():
+    provider = CountingProvider([create_event("Cached event")])
+    client = IntelligenceClient([provider])
+
+    first = client.fetch(query="Iran", limit=10)
+    second = client.fetch(query="Iran", limit=10)
+
+    assert len(provider.calls) == 1
+    assert first == second
+    assert first[0] is not second[0]
+
+    client.reset_status()
+    client.fetch(query="Iran", limit=10)
+
+    assert len(provider.calls) == 2
+
+
+def test_client_reuses_query_insensitive_provider_across_market_queries():
+    provider = CountingProvider(
+        [create_event("Shared feed event")],
+        query_sensitive=False,
+    )
+    client = IntelligenceClient([provider])
+
+    client.fetch(query="Iran")
+    client.fetch(query="China")
+
+    assert len(provider.calls) == 1
+
+
+def test_client_archives_only_fresh_provider_results():
+    archived = []
+    provider = CountingProvider([create_event("Archived once")])
+    client = IntelligenceClient([provider], event_sink=archived.extend)
+
+    client.fetch(query="Iran")
+    client.fetch(query="Iran")
+
+    assert len(archived) == 1
 
 
 def test_source_reliability_is_configurable():

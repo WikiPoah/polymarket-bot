@@ -1,3 +1,4 @@
+# File-Version: 1.0.0
 """
 RSS intelligence provider.
 """
@@ -69,6 +70,8 @@ class RSSProvider(IntelligenceProvider):
     """
     Retrieves normalized events from configured RSS and Atom feeds.
     """
+
+    query_sensitive = False
 
     def __init__(
         self,

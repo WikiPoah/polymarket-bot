@@ -1,3 +1,4 @@
+# File-Version: 1.0.0
 """Tests for normalized ReliefWeb intelligence ingestion."""
 
 import requests
@@ -42,6 +43,27 @@ def test_reliefweb_provider_normalizes_reports(monkeypatch):
     assert events[0].countries == ["Ukraine"]
     assert events[0].locations == ["Ukraine"]
     assert events[0].published_at.isoformat() == "2026-08-01T12:00:00+00:00"
+
+
+def test_reliefweb_provider_uses_configured_appname(monkeypatch):
+    requests_seen = []
+
+    def get(*args, **kwargs):
+        requests_seen.append(kwargs)
+        return Response()
+
+    monkeypatch.setattr(
+        "src.intelligence.providers.reliefweb.RELIEFWEB_APPNAME",
+        "approved-application-name",
+    )
+    monkeypatch.setattr(
+        "src.intelligence.providers.reliefweb.requests.get",
+        get,
+    )
+
+    ReliefWebProvider().fetch()
+
+    assert requests_seen[0]["params"]["appname"] == "approved-application-name"
 
 
 def test_reliefweb_provider_reports_network_failure(monkeypatch):

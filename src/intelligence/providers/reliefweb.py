@@ -1,10 +1,16 @@
+# File-Version: 1.0.0
 """ReliefWeb public API provider for normalized humanitarian intelligence."""
 
 from datetime import datetime
 
 import requests
 
-from src.config import INTELLIGENCE_USER_AGENT, RELIEFWEB_API_URL, REQUEST_TIMEOUT
+from src.config import (
+    INTELLIGENCE_USER_AGENT,
+    RELIEFWEB_API_URL,
+    RELIEFWEB_APPNAME,
+    REQUEST_TIMEOUT,
+)
 from src.intelligence.exceptions import IntelligenceProviderError
 from src.intelligence.providers.base import IntelligenceProvider
 from src.models import GeoPoliticalEvent
@@ -20,7 +26,7 @@ class ReliefWebProvider(IntelligenceProvider):
         sort: str = "recent",
     ) -> list[GeoPoliticalEvent]:
         params = {
-            "appname": "polymarket-bot",
+            "appname": RELIEFWEB_APPNAME,
             "limit": min(limit, 100),
             "sort[]": "date.created:desc",
             "fields[include][]": [

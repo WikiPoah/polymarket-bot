@@ -1,3 +1,4 @@
+# File-Version: 1.0.0
 """Persistent models for simulated strategy decisions."""
 
 from dataclasses import asdict, dataclass
@@ -31,10 +32,11 @@ class PaperDecision:
     event_type: str = "OTHER"
     risk_status: str = "UNKNOWN"
     risk_reason: str = ""
+    rationale: str = ""
     resolved_yes: bool | None = None
     result: str | None = None
     profit_loss: float = 0.0
-    record_version: int = 2
+    record_version: int = 3
     run_id: str = ""
     opportunity_id: str = ""
     resolved_at: str | None = None
@@ -78,6 +80,14 @@ class PaperDecision:
                 ),
                 "",
             ),
+            rationale=next(
+                (
+                    reason
+                    for reason in reversed(decision.reasons)
+                    if reason.startswith(("Accepted:", "Ignored:", "Risk rejected:"))
+                ),
+                "",
+            ),
             run_id=run_id,
         )
         paper_decision.opportunity_id = paper_decision.build_opportunity_id()
@@ -101,6 +111,7 @@ class PaperDecision:
         values.setdefault("event_type", "OTHER")
         values.setdefault("risk_status", "UNKNOWN")
         values.setdefault("risk_reason", "")
+        values.setdefault("rationale", "")
         values.setdefault("record_version", 1)
         values.setdefault("run_id", "")
         values.setdefault("opportunity_id", "")

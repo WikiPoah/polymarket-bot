@@ -1,3 +1,4 @@
+# File-Version: 1.1.0
 """
 Functions for communicating with the Polymarket API.
 """
@@ -7,10 +8,14 @@ import time
 import requests
 
 from src.config import (
+    DEFAULT_MARKET_LIMIT,
     GAMMA_API_URL,
     REQUEST_TIMEOUT,
-    DEFAULT_MARKET_LIMIT,
 )
+
+
+MARKET_PAGE_SIZE = 100
+MAX_MARKET_PAGES = 1000
 
 
 class PolymarketAPI:
@@ -27,14 +32,14 @@ class PolymarketAPI:
 
     def get_active_markets(
         self,
-        limit=DEFAULT_MARKET_LIMIT,
-    ):
+        limit: int = DEFAULT_MARKET_LIMIT,
+    ) -> list[dict]:
         """
         Retrieve active markets from Polymarket.
 
         Args:
-            limit (int):
-                Maximum number of markets to retrieve.
+            limit:
+                Maximum number of highest-volume active markets to retrieve.
 
         Returns:
             list:
@@ -45,71 +50,100 @@ class PolymarketAPI:
                 If the request cannot be completed.
         """
 
-        endpoint = f"{self.base_url}/markets"
+        if (
+            isinstance(limit, bool)
+            or not isinstance(limit, int)
+            or limit <= 0
+        ):
+            raise ValueError("limit must be a positive integer")
 
-        params = {
-            "active": "true",
-            "closed": "false",
-            "limit": limit,
-        }
+        endpoint = f"{self.base_url}/markets/keyset"
+        markets: list[dict] = []
+        cursor: str | None = None
+        seen_cursors: set[str] = set()
 
-        last_error = None
+        for _page_number in range(MAX_MARKET_PAGES):
+            page_limit = MARKET_PAGE_SIZE
+            page_limit = min(page_limit, limit - len(markets))
 
-        for attempt in range(3):
+            params: dict[str, str | int] = {
+                "active": "true",
+                "closed": "false",
+                "limit": page_limit,
+                "order": "volume24hr",
+                "ascending": "false",
+            }
+            if cursor is not None:
+                params["after_cursor"] = cursor
 
-            try:
+            payload = self._get_page(endpoint, params)
+            page = payload.get("markets")
+            next_cursor = payload.get("next_cursor")
 
-                print(
-                    f"Polymarket request attempt {attempt + 1}/3..."
+            if not isinstance(page, list) or not all(
+                isinstance(market, dict) for market in page
+            ):
+                raise RuntimeError(
+                    "Unexpected Polymarket response: markets must be a list of objects"
                 )
 
+            markets.extend(page)
+            if len(markets) >= limit:
+                return markets[:limit]
+
+            if next_cursor is None:
+                return markets
+            if not isinstance(next_cursor, str) or not next_cursor:
+                raise RuntimeError(
+                    "Unexpected Polymarket response: next_cursor must be a string"
+                )
+            if next_cursor in seen_cursors:
+                raise RuntimeError("Polymarket pagination returned a repeated cursor")
+
+            seen_cursors.add(next_cursor)
+            cursor = next_cursor
+
+        raise RuntimeError(
+            f"Polymarket pagination exceeded {MAX_MARKET_PAGES} pages"
+        )
+
+    @staticmethod
+    def _get_page(
+        endpoint: str,
+        params: dict[str, str | int],
+    ) -> dict:
+        last_error: Exception | None = None
+
+        for attempt in range(3):
+            try:
                 response = requests.get(
                     endpoint,
                     params=params,
                     timeout=REQUEST_TIMEOUT,
                 )
-
-                print(
-                    f"Response status: {response.status_code}"
-                )
-
                 response.raise_for_status()
-
-                return response.json()
-
-            except requests.exceptions.Timeout as error:
-
-                print(
-                    "Polymarket timeout."
-                )
-
+                payload = response.json()
+                if not isinstance(payload, dict):
+                    raise RuntimeError(
+                        "Unexpected Polymarket response: expected an object"
+                    )
+                return payload
+            except (
+                requests.exceptions.Timeout,
+                requests.exceptions.ConnectionError,
+            ) as error:
                 last_error = error
-
-            except requests.exceptions.ConnectionError as error:
-
-                print(
-                    "Polymarket connection error."
-                )
-
-                last_error = error
-
             except requests.exceptions.HTTPError as error:
-
                 status_code = (
                     error.response.status_code
                     if error.response is not None
                     else "unknown"
                 )
-
-                raise RuntimeError(
-                    f"HTTP error: {status_code}"
-                ) from error
-
+                raise RuntimeError(f"HTTP error: {status_code}") from error
             except requests.exceptions.RequestException as error:
-
-                raise RuntimeError(
-                    f"Unexpected API error: {error}"
-                ) from error
+                raise RuntimeError(f"Unexpected API error: {error}") from error
+            except ValueError as error:
+                raise RuntimeError("Polymarket returned invalid JSON") from error
 
             if attempt < 2:
                 time.sleep(2)

@@ -1,3 +1,4 @@
+# File-Version: 1.0.0
 """Timestamped market/intelligence storage and leakage-safe historical replay."""
 
 from copy import deepcopy
@@ -5,10 +6,9 @@ from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 import json
 from pathlib import Path
-from typing import Callable
+from typing import TYPE_CHECKING, Callable
 
 from src.intelligence.client import IntelligenceClient
-from src.intelligence.pipeline import IntelligencePipeline
 from src.intelligence.providers.base import IntelligenceProvider
 from src.models import GeoPoliticalEvent
 from src.paper_trading.analytics import AnalyticsReport, AnalyticsSummary, PerformanceAnalytics
@@ -17,6 +17,10 @@ from src.paper_trading.history import PaperTradingRecorder
 from src.paper_trading.models import PaperDecision
 from src.strategy.engine import StrategyDecision
 from src.strategy.expected_value import StrategyAction
+
+
+if TYPE_CHECKING:
+    from src.intelligence.pipeline import IntelligencePipeline
 
 
 def _parse_time(value: str) -> datetime:
@@ -276,7 +280,7 @@ class HistoricalBacktestReport:
         return self.analytics.summary.executed_trades
 
 
-PipelineFactory = Callable[[datetime, _HistoricalRecorder], IntelligencePipeline]
+PipelineFactory = Callable[[datetime, _HistoricalRecorder], "IntelligencePipeline"]
 
 
 class HistoricalReplayEngine:
@@ -294,7 +298,9 @@ class HistoricalReplayEngine:
         self,
         as_of: datetime,
         recorder: _HistoricalRecorder,
-    ) -> IntelligencePipeline:
+    ) -> "IntelligencePipeline":
+        from src.intelligence.pipeline import IntelligencePipeline
+
         provider = HistoricalIntelligenceProvider(self.intelligence, as_of)
         client = IntelligenceClient([provider], evidence_time=as_of)
         return IntelligencePipeline(client, paper_trader=recorder, as_of=as_of)

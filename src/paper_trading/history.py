@@ -1,3 +1,4 @@
+# File-Version: 1.0.0
 """JSON decision history for paper trading."""
 
 import json
@@ -49,7 +50,7 @@ class PaperTradingRecorder:
         temporary.write_text(
             json.dumps(
                 {
-                    "version": 2,
+                    "version": 3,
                     "records": [decision.to_dict() for decision in decisions],
                 },
                 indent=2,

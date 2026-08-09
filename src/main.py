@@ -1,6 +1,8 @@
+# File-Version: 1.0.0
 """Application entry point for one-shot or continuous paper evaluation."""
 
 import argparse
+import logging
 
 from src.api import PolymarketAPI
 from src.filters import filter_geopolitical_markets
@@ -167,7 +169,18 @@ def main() -> None:
         "--intelligence-history",
         default="data/historical_intelligence.json",
     )
+    parser.add_argument(
+        "--log-level",
+        choices=("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"),
+        default="WARNING",
+        help="Diagnostic logging level (default: WARNING)",
+    )
     args = parser.parse_args()
+
+    logging.basicConfig(
+        level=getattr(logging, args.log_level),
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+    )
 
     runner = _build_runner(
         args.history, args.status, args.market_history, args.intelligence_history,

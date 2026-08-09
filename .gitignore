@@ -1,15 +1,44 @@
+# File-Version: 1.1.0
+
 # Virtual environment
 .venv/
 
 # Python
 __pycache__/
 *.pyc
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
 
 # Environment variables
 .env
 
-# VS Code
+# Coverage
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+
+# Editors and operating systems
 .vscode/
+.idea/
+.DS_Store
+*.swp
+*~
 
-# Environment variables
-.env
+# Live paper-trading runtime output
+data/paper_trading_history.json
+data/system_status.json
+data/historical_markets.json
+data/historical_intelligence.json
+
+# Historical collection and audit output
+data/historical_dataset/
+data/historical_selection*/
+data/historical_intelligence_event_pilot*/
+data/audits/
+
+# Interrupted writes and collection process output
+data/**/*.tmp
+data/**/collection.lock
+data/**/*.log

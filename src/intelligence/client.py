@@ -1,9 +1,11 @@
+# File-Version: 1.0.0
 """
 Intelligence client.
 
 Coordinates one or more intelligence providers.
 """
 
+from copy import deepcopy
 from datetime import datetime, timezone
 
 from src.intelligence.providers.base import (
@@ -40,6 +42,10 @@ class IntelligenceClient:
         self._event_sink = event_sink
         self._provider_status: dict[str, str] = {}
         self._provider_errors: list[str] = []
+        self._provider_cache: dict[
+            tuple[int, str | None, int, str],
+            list[GeoPoliticalEvent],
+        ] = {}
         self._provider_details: dict[str, dict] = {
             type(provider).__name__: self._empty_provider_details()
             for provider in providers
@@ -60,6 +66,7 @@ class IntelligenceClient:
     def reset_status(self) -> None:
         self._provider_status.clear()
         self._provider_errors.clear()
+        self._provider_cache.clear()
         for details in self._provider_details.values():
             details["status"] = "UNKNOWN"
             details["error"] = ""
@@ -98,10 +105,21 @@ class IntelligenceClient:
         """
 
         results: list[GeoPoliticalEvent] = []
+        fresh_results: list[GeoPoliticalEvent] = []
 
         for provider in self._providers:
 
             provider_name = type(provider).__name__
+            effective_query = (
+                query
+                if getattr(provider, "query_sensitive", True)
+                else None
+            )
+            cache_key = (id(provider), effective_query, limit, sort)
+
+            if cache_key in self._provider_cache:
+                results.extend(deepcopy(self._provider_cache[cache_key]))
+                continue
 
             try:
                 provider_results = provider.fetch(
@@ -120,6 +138,16 @@ class IntelligenceClient:
                     self._provider_errors.append(message)
                 continue
 
+            if not all(
+                isinstance(event, GeoPoliticalEvent)
+                for event in provider_results
+            ):
+                raise TypeError(
+                    "Intelligence providers must return GeoPoliticalEvent objects."
+                )
+
+            self._provider_cache[cache_key] = deepcopy(provider_results)
+
             self._provider_status.setdefault(provider_name, "OK")
             now = datetime.now(timezone.utc)
             details = self._provider_details.setdefault(
@@ -130,19 +158,8 @@ class IntelligenceClient:
                 details.update(status="OK", error="")
 
             if provider_results:
-                if not all(
-                    isinstance(
-                        event,
-                        GeoPoliticalEvent,
-                    )
-                    for event in provider_results
-                ):
-                    raise TypeError(
-                        "Intelligence providers must return "
-                        "GeoPoliticalEvent objects."
-                    )
-
                 results.extend(provider_results)
+                fresh_results.extend(provider_results)
                 timestamps = [
                     event.published_at
                     for event in provider_results
@@ -160,8 +177,8 @@ class IntelligenceClient:
                         0.0, (now - latest).total_seconds()
                     )
 
-        if self._event_sink is not None and results:
+        if self._event_sink is not None and fresh_results:
             # Archive independent provider reports before evidence aggregation.
-            self._event_sink(results)
+            self._event_sink(fresh_results)
         aggregated = aggregate_events(results, now=self._evidence_time)
         return aggregated

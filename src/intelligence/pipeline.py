@@ -1,9 +1,13 @@
+# File-Version: 1.0.0
 """
 Intelligence pipeline.
 
 Coordinates retrieval, classification, scoring and matching
 of geopolitical events against active Polymarket markets.
 """
+
+from datetime import datetime
+import logging
 
 from src.intelligence.classification import EventType
 from src.intelligence.outcomes import Outcome
@@ -21,7 +25,9 @@ from src.strategy.engine import (
 )
 from src.paper_trading.history import PaperTradingRecorder
 from src.strategy.portfolio_risk import PortfolioRiskManager
-from datetime import datetime
+
+
+logger = logging.getLogger(__name__)
 
 
 class IntelligencePipeline:
@@ -145,22 +151,22 @@ class IntelligencePipeline:
 
         decisions: list[StrategyDecision] = []
 
+        logger.info("Evaluating %d classified markets", len(classified_markets))
+
         for classified_market in classified_markets:
 
             query = self._query_builder.build(
                 classified_market
             )
 
-            print(f"Query: {query}")
+            logger.debug("Intelligence query: %s", query)
 
             events = self._client.fetch(
                 query=query,
                 limit=100,
             )
 
-            print(
-                f"Events retrieved: {len(events)}"
-            )
+            logger.debug("Retrieved %d events", len(events))
 
             classified_events = []
 
@@ -169,24 +175,14 @@ class IntelligencePipeline:
                 event = self._event_classifier.classify(event)
                 event = self._outcome_classifier.classify(event)
 
-                print()
-                print("FILTER DEBUG:")
-                print(event.title)
-                print(
-                    "Countries:",
+                logger.debug(
+                    "Classified event title=%r countries=%s actors=%s "
+                    "event_type=%s outcome=%s",
+                    event.title,
                     event.countries,
-                )
-                print(
-                    "Actors:",
                     event.actors,
-                )
-                print(
-                    "Event Type:",
-                    event.event_type,
-                )
-                print(
-                    "Outcome:",
-                    event.outcome,
+                    event.event_type.name,
+                    event.outcome.name,
                 )
 
                 if self._is_relevant(
@@ -195,37 +191,25 @@ class IntelligencePipeline:
                 ):
                     classified_events.append(event)
 
-            print(
-                f"Relevant events: {len(classified_events)}"
-            )
+            logger.debug("Retained %d relevant events", len(classified_events))
 
             scored_events = score_events(
                 classified_events,
                 classified_market,
             )
 
-            print(
-                f"Events scored: {len(scored_events)}"
-            )
+            logger.debug("Scored %d events", len(scored_events))
 
             for scored_event in scored_events[:5]:
 
-                print()
-                print("DEBUG EVENT:")
-                print(
-                    scored_event.event.title
-                )
-                print(
-                    "Countries:",
+                logger.debug(
+                    "Top event score=%d title=%r countries=%s actors=%s "
+                    "event_type=%s",
+                    scored_event.score,
+                    scored_event.event.title,
                     scored_event.event.countries,
-                )
-                print(
-                    "Actors:",
                     scored_event.event.actors,
-                )
-                print(
-                    "Event Type:",
-                    scored_event.event.event_type,
+                    scored_event.event.event_type.name,
                 )
 
             for scored_event in scored_events:
@@ -235,9 +219,7 @@ class IntelligencePipeline:
                     [classified_market],
                 )
 
-                print(
-                    f"Matches found: {len(opportunities)}"
-                )
+                logger.debug("Found %d market matches", len(opportunities))
 
                 for opportunity in opportunities:
 
@@ -258,5 +240,7 @@ class IntelligencePipeline:
             ),
             reverse=True,
         )
+
+        logger.info("Generated %d strategy decisions", len(decisions))
 
         return decisions

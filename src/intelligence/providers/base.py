@@ -1,3 +1,4 @@
+# File-Version: 1.0.0
 """
 Base interface for intelligence providers.
 """
@@ -11,6 +12,8 @@ class IntelligenceProvider(ABC):
     """
     Contract implemented by every intelligence provider.
     """
+
+    query_sensitive = True
 
     @abstractmethod
     def fetch(

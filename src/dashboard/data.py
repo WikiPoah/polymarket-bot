@@ -1,3 +1,4 @@
+# File-Version: 1.0.0
 """Dashboard presentation data built from existing paper-trading services."""
 
 from typing import Any
@@ -29,12 +30,44 @@ class DashboardDataBuilder:
             (item for item in reversed(statuses) if item.success),
             None,
         )
+        accepted = [
+            decision for decision in decisions
+            if decision.decision in {"BUY YES", "BUY NO"}
+        ]
+        rejected = [
+            decision for decision in decisions
+            if decision.risk_status == "REJECTED"
+        ]
+        ignored = [
+            decision for decision in decisions
+            if decision.decision == "IGNORE"
+            and decision.risk_status != "REJECTED"
+        ]
         return {
             "current_opportunities": [
                 self._decision_view(decision)
-                for decision in decisions
+                for decision in accepted
                 if decision.result is None
             ],
+            "accepted_trade_ideas": [
+                self._decision_view(decision) for decision in accepted
+            ],
+            "rejected_decisions": [
+                self._decision_view(decision) for decision in rejected
+            ],
+            "ignored_decisions": [
+                self._decision_view(decision) for decision in ignored
+            ],
+            "decision_funnel": {
+                "evaluated": len(decisions),
+                "accepted": len(accepted),
+                "risk_rejected": len(rejected),
+                "ignored": len(ignored),
+                "settled": sum(
+                    decision.result in {"WIN", "LOSS"}
+                    for decision in accepted
+                ),
+            },
             "performance": self._summary_view(report.summary),
             "history": [self._decision_view(decision) for decision in decisions],
             "breakdowns": {
@@ -122,8 +155,34 @@ class DashboardDataBuilder:
             "evidence_count": decision.evidence_count,
             "risk_status": decision.risk_status,
             "risk_reason": decision.risk_reason,
+            "rationale": DashboardDataBuilder._rationale(decision),
             "event_type": decision.event_type,
             "event_title": decision.event_title,
             "result": decision.result,
             "profit_loss": decision.profit_loss,
         }
+
+    @staticmethod
+    def _rationale(decision: PaperDecision) -> str:
+        if decision.rationale:
+            return decision.rationale
+        if decision.risk_status == "REJECTED":
+            reason = decision.risk_reason or "a portfolio risk control failed"
+            return f"Risk rejected: {reason}"
+        if decision.decision in {"BUY YES", "BUY NO"}:
+            return (
+                f"Accepted: bot estimate {decision.estimated_probability:.1%} "
+                f"versus market {decision.market_probability:.1%}, with edge "
+                f"{decision.edge:+.1%} and confidence {decision.confidence:.1%}."
+            )
+        if decision.confidence < 0.60:
+            return (
+                f"Ignored: confidence {decision.confidence:.1%} is below the "
+                "required 60.0%."
+            )
+        if abs(decision.edge) < 0.05:
+            return (
+                f"Ignored: absolute edge {abs(decision.edge):.1%} is below the "
+                "required 5.0%."
+            )
+        return "Ignored: the opportunity did not pass the strategy rules."

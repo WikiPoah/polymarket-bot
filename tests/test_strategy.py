@@ -1,3 +1,4 @@
+# File-Version: 1.0.0
 """
 Tests for the strategy engine.
 """
@@ -141,6 +142,8 @@ def test_strong_edge_produces_buy_yes_decision():
     assert decision.edge > 0.05
     assert decision.action == StrategyAction.BUY_YES
     assert decision.confidence >= 0.60
+    assert decision.reasons[-1].startswith("Accepted: BUY YES")
+    assert "Bot estimate" in decision.reasons[0]
 
 
 def test_no_edge_is_ignored():
@@ -170,6 +173,7 @@ def test_low_confidence_opportunity_is_rejected():
 
     assert decision.confidence < 0.60
     assert decision.action == StrategyAction.IGNORE
+    assert "below the required 60.0%" in decision.reasons[-1]
 
 
 def test_high_confidence_event_is_accepted():

@@ -1,6 +1,9 @@
+# File-Version: 1.0.0
 """
 Tests for intelligence pipeline relevance filtering.
 """
+
+import logging
 
 from src.intelligence.classification import EventType
 from src.intelligence.market_classifier import MarketClassifier
@@ -134,3 +137,26 @@ def test_military_market_rejects_economic_country_overlap():
     )
 
     assert not IntelligencePipeline(None)._is_relevant(event, invasion_market())
+
+
+def test_pipeline_uses_debug_logging_without_writing_stdout(caplog, capsys):
+    class Client:
+        provider_status = {}
+        provider_errors = []
+        provider_details = {}
+
+        def fetch(self, query=None, limit=100):
+            return []
+
+        def reset_status(self):
+            return None
+
+    with caplog.at_level(logging.DEBUG, logger="src.intelligence.pipeline"):
+        decisions = IntelligencePipeline(Client()).run([
+            {"question": "Will China invade Taiwan before 2027?"},
+        ])
+
+    assert decisions == []
+    assert "Intelligence query:" in caplog.text
+    assert "Retrieved 0 events" in caplog.text
+    assert capsys.readouterr().out == ""

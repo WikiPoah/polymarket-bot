@@ -1,14 +1,22 @@
+# File-Version: 1.0.0
 """Regression tests for the read-only historical data coverage probe."""
 
 from datetime import datetime, timezone
 
 import requests
 
-from src.coverage_probe import HistoricalCoverageProbe
+from src.coverage_probe import HistoricalCoverageProbe, _timestamp
 
 
 YES_TOKEN = "123456789012345678901234567890"
 NO_TOKEN = "987654321098765432109876543210"
+
+
+def test_gdelt_compact_timestamps_are_supported_on_python_310():
+    expected = datetime(2026, 1, 1, 12, 30, tzinfo=timezone.utc)
+
+    assert _timestamp("20260101T123000Z") == expected
+    assert _timestamp("20260101123000Z") == expected
 
 
 class Response:

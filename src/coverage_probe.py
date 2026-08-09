@@ -1,3 +1,4 @@
+# File-Version: 1.0.1
 """Read-only coverage checks for building a historical replay dataset.
 
 This module only reads public data endpoints.  It is deliberately independent
@@ -45,6 +46,15 @@ def _timestamp(value: Any) -> datetime | None:
             return None
     if not isinstance(value, str) or not value:
         return None
+    for pattern in (
+        "%Y%m%dT%H%M%SZ",
+        "%Y%m%d%H%M%SZ",
+        "%Y%m%d%H%M%S",
+    ):
+        try:
+            return datetime.strptime(value, pattern).replace(tzinfo=timezone.utc)
+        except ValueError:
+            pass
     candidates = (value, value.replace("Z", "+00:00"))
     for candidate in candidates:
         try:
@@ -52,11 +62,6 @@ def _timestamp(value: Any) -> datetime | None:
             if parsed.tzinfo is None:
                 parsed = parsed.replace(tzinfo=timezone.utc)
             return parsed.astimezone(timezone.utc)
-        except ValueError:
-            pass
-    for pattern in ("%Y%m%dT%H%M%SZ", "%Y%m%d%H%M%S"):
-        try:
-            return datetime.strptime(value, pattern).replace(tzinfo=timezone.utc)
         except ValueError:
             pass
     return None

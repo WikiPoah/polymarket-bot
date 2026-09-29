@@ -1,4 +1,4 @@
-# File-Version: 1.0.0
+# File-Version: 1.2.0
 """Persistent models for simulated strategy decisions."""
 
 from dataclasses import asdict, dataclass
@@ -12,13 +12,13 @@ from src.strategy.engine import StrategyDecision
 
 @dataclass
 class PaperDecision:
-    """A strategy decision captured without placing an order."""
+    """A paper decision whose position size and P/L are capital fractions."""
 
     id: str
     timestamp: str
     market: dict[str, Any]
     decision: str
-    market_probability: float
+    market_probability: float | None
     estimated_probability: float
     edge: float
     confidence: float
@@ -46,11 +46,13 @@ class PaperDecision:
         cls,
         decision: StrategyDecision,
         run_id: str = "",
+        decision_id: str | None = None,
+        recorded_at: datetime | None = None,
     ) -> "PaperDecision":
         event = decision.opportunity.event.event
         paper_decision = cls(
-            id=str(uuid4()),
-            timestamp=datetime.now(timezone.utc).isoformat(),
+            id=decision_id or str(uuid4()),
+            timestamp=(recorded_at or datetime.now(timezone.utc)).isoformat(),
             market=dict(decision.opportunity.market),
             decision=decision.action.value,
             market_probability=decision.market_probability,

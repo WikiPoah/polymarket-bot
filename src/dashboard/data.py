@@ -1,4 +1,4 @@
-# File-Version: 1.0.0
+# File-Version: 1.1.0
 """Dashboard presentation data built from existing paper-trading services."""
 
 from typing import Any
@@ -6,6 +6,7 @@ from typing import Any
 from src.paper_trading.analytics import PerformanceAnalytics
 from src.paper_trading.history import PaperTradingRecorder
 from src.paper_trading.models import PaperDecision
+from src.persistence import PersistenceCorruptionError
 from src.monitoring import RunStatus, SystemStatusStore
 
 
@@ -22,9 +23,18 @@ class DashboardDataBuilder:
         self.analytics = PerformanceAnalytics()
 
     def build(self) -> dict[str, Any]:
-        decisions = self.recorder.load()
+        storage_errors: list[str] = []
+        try:
+            decisions = self.recorder.load()
+        except PersistenceCorruptionError as error:
+            decisions = []
+            storage_errors.append(str(error))
         report = self.analytics.analyze(decisions)
-        statuses = self.status_store.load()
+        try:
+            statuses = self.status_store.load()
+        except PersistenceCorruptionError as error:
+            statuses = []
+            storage_errors.append(str(error))
         latest = statuses[-1] if statuses else None
         last_successful = next(
             (item for item in reversed(statuses) if item.success),
@@ -96,7 +106,7 @@ class DashboardDataBuilder:
             ],
             "brier_score": report.brier_score,
             "system": {
-                "health": self._health(latest),
+                "health": "ERROR" if storage_errors else self._health(latest),
                 "latest_run": self._run_view(latest),
                 "last_successful_run": (
                     last_successful.completed_at if last_successful else None
@@ -106,6 +116,7 @@ class DashboardDataBuilder:
                 ),
                 "recent_runs": [self._run_view(item) for item in statuses[-10:][::-1]],
                 "provider_freshness": latest.provider_details if latest else {},
+                "storage_errors": storage_errors,
             },
             "recent_activity": [
                 self._decision_view(decision) for decision in decisions[-10:][::-1]

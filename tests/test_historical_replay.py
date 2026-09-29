@@ -1,3 +1,4 @@
+# File-Version: 1.1.0
 """Tests for timestamped market collection and true historical replay."""
 
 import json
@@ -6,11 +7,13 @@ import pytest
 
 from src.paper_trading.historical import (
     HistoricalIntelligenceRecord,
+    HistoricalIntelligenceStore,
     HistoricalIntelligenceProvider,
     HistoricalMarketSnapshot,
     HistoricalMarketStore,
     HistoricalReplayEngine,
 )
+from src.persistence import PersistenceCorruptionError
 
 
 def intelligence(**changes):
@@ -47,7 +50,7 @@ def snapshot(**changes):
     return HistoricalMarketSnapshot(**values)
 
 
-def test_historical_market_store_loads_and_skips_invalid_records(tmp_path):
+def test_historical_market_store_rejects_invalid_records(tmp_path):
     path = tmp_path / "markets.json"
     path.write_text(json.dumps({
         "version": 1,
@@ -58,12 +61,39 @@ def test_historical_market_store_loads_and_skips_invalid_records(tmp_path):
     }), encoding="utf-8")
     store = HistoricalMarketStore(path)
 
-    records = store.load()
+    with pytest.raises(PersistenceCorruptionError, match="record 1 is invalid"):
+        store.load()
 
-    assert len(records) == 1
-    assert records[0].liquidity == 10000.0
-    assert records[0].volume == 50000.0
     assert store.invalid_records == 1
+
+
+def test_historical_market_capture_preserves_malformed_state(tmp_path):
+    from datetime import datetime, timezone
+
+    path = tmp_path / "markets.json"
+    original = b'{"records": [broken'
+    path.write_bytes(original)
+    store = HistoricalMarketStore(path)
+
+    with pytest.raises(PersistenceCorruptionError, match="historical market file"):
+        store.capture_market({
+            "id": "market-1", "question": "Will an event happen?",
+            "outcomes": '["Yes", "No"]', "outcomePrices": '["0.35", "0.65"]',
+        }, datetime(2026, 1, 1, tzinfo=timezone.utc))
+
+    assert path.read_bytes() == original
+
+
+def test_historical_intelligence_capture_preserves_malformed_state(tmp_path):
+    path = tmp_path / "intelligence.json"
+    original = b'{"records": [broken'
+    path.write_bytes(original)
+    store = HistoricalIntelligenceStore(path)
+
+    with pytest.raises(PersistenceCorruptionError, match="historical intelligence file"):
+        store.capture_events([intelligence().to_event()])
+
+    assert path.read_bytes() == original
 
 
 def test_market_capture_persists_price_and_market_metadata(tmp_path):
@@ -137,9 +167,9 @@ def test_replay_resolves_outcomes_and_calculates_performance():
     assert summary.wins == 1
     assert summary.losses == 1
     assert summary.win_rate == .5
-    assert summary.profit_loss == pytest.approx(.02)
+    assert summary.profit_loss == pytest.approx(.05)
     assert report.roi == pytest.approx(.25)
-    assert report.maximum_drawdown == pytest.approx(.04)
+    assert report.maximum_drawdown == pytest.approx(.1)
     assert summary.average_edge > 0
     assert report.analytics.calibration
     assert report.performance_by_market_category["LEADERSHIP"].executed_trades == 2

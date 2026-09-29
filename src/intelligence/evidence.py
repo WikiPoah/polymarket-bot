@@ -1,3 +1,4 @@
+# File-Version: 1.2.0
 """
 Source reliability and cross-provider evidence aggregation.
 """
@@ -48,6 +49,9 @@ def _event_keys(event: GeoPoliticalEvent) -> list[str]:
 
     keys: list[str] = []
 
+    if event.event_cluster_id:
+        keys.append(f"cluster:{event.event_cluster_id}")
+
     if event.source_url:
         keys.append(
             f"url:{event.source_url.strip().lower()}"
@@ -72,6 +76,7 @@ def _prepare_event(
     """Initialize source evidence metadata on a provider event."""
 
     source = event.source or event.category or "unknown"
+    evidence_source = event.confirmation_group_id or event.publisher or source
     event.source_reliability = get_source_reliability(source)
     event.freshness_score = get_freshness_score(event.published_at, now)
     event.evidence_confidence = (
@@ -79,7 +84,7 @@ def _prepare_event(
     )
 
     if not event.supporting_sources:
-        event.supporting_sources.append(source)
+        event.supporting_sources.append(evidence_source)
 
 
 def _merge_event(
@@ -88,12 +93,23 @@ def _merge_event(
 ) -> None:
     """Merge independent source evidence into the retained event."""
 
-    source = duplicate.source or duplicate.category or "unknown"
+    source = (
+        duplicate.confirmation_group_id
+        or duplicate.publisher
+        or duplicate.source
+        or duplicate.category
+        or "unknown"
+    )
 
     if source in target.supporting_sources:
         return
 
     target.supporting_sources.append(source)
+    if duplicate.available_at is not None and (
+        target.available_at is None
+        or duplicate.available_at > target.available_at
+    ):
+        target.available_at = duplicate.available_at
     target.evidence_confidence = min(
         1.0,
         1.0

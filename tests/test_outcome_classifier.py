@@ -1,3 +1,4 @@
+# File-Version: 1.0.0
 """
 Tests for the outcome classifier.
 """
@@ -80,3 +81,19 @@ def test_unknown_event_defaults_to_other():
     OutcomeClassifier().classify(event)
 
     assert event.outcome == Outcome.OTHER
+
+
+def test_outcome_keyword_does_not_match_inside_larger_word():
+    event = create_event("Football striker comments after the match")
+
+    OutcomeClassifier().classify(event)
+
+    assert event.outcome == Outcome.OTHER
+
+
+def test_legitimate_multi_word_outcome_phrase_still_matches():
+    event = create_event("Prime minister agrees to step down")
+
+    OutcomeClassifier().classify(event)
+
+    assert event.outcome == Outcome.LEADER_REMOVED

@@ -1,4 +1,4 @@
-# File-Version: 1.1.0
+# File-Version: 1.3.0
 """Tests for incremental historical dataset collection."""
 
 from datetime import datetime, timedelta, timezone
@@ -8,8 +8,11 @@ from pathlib import Path
 import requests
 import pytest
 
+from src.persistence import PersistenceCorruptionError
+
 from src.historical_dataset import (
     GDELTIntelligenceCollector,
+    CollectionResult,
     CollectionCheckpoint,
     CollectionManifestStore,
     CollectionRunLock,
@@ -111,6 +114,41 @@ def test_market_collection_is_incremental_atomic_and_duplicate_free(tmp_path):
     payload = json.loads(path.read_text(encoding="utf-8"))
     assert payload["version"] == 1
     assert not path.with_suffix(".json.tmp").exists()
+
+
+def test_dataset_upsert_preserves_existing_malformed_state(tmp_path):
+    path = tmp_path / "markets.json"
+    original = b'{"records": [broken'
+    path.write_bytes(original)
+    store = HistoricalMarketDatasetStore(path)
+
+    with pytest.raises(PersistenceCorruptionError, match="versioned dataset file"):
+        store.upsert([])
+
+    assert path.read_bytes() == original
+
+
+def test_checkpoint_update_preserves_existing_malformed_state(tmp_path):
+    path = tmp_path / "checkpoint.json"
+    original = b'{"markets": broken'
+    path.write_bytes(original)
+    checkpoint = CollectionCheckpoint(path)
+
+    with pytest.raises(PersistenceCorruptionError, match="collection checkpoint"):
+        checkpoint.update("markets", discovery_complete=True)
+
+    assert path.read_bytes() == original
+
+
+def test_checkpoint_rejects_invalid_section_structure(tmp_path):
+    path = tmp_path / "checkpoint.json"
+    path.write_text(
+        json.dumps({"version": 1, "markets": [], "intelligence": {}}),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(PersistenceCorruptionError, match="section 'markets' is invalid"):
+        CollectionCheckpoint(path).load()
 
 
 def test_atomic_store_retries_transient_replace_lock(tmp_path, monkeypatch):
@@ -1131,6 +1169,40 @@ def test_representative_multi_provider_collection_and_status_report(tmp_path):
     assert status["warnings"] == []
 
 
+def test_intentionally_excluded_provider_is_not_collected(tmp_path):
+    start, end = START, START + timedelta(days=1)
+    store = HistoricalIntelligenceDatasetStore(tmp_path / "intelligence.json")
+    checkpoint = CollectionCheckpoint(tmp_path / "checkpoint.json")
+    manifest = HistoricalIntelligenceManifestStore(tmp_path / "manifest.json")
+    manifest.create(start, end, (
+        HistoricalIntelligenceProviderSpec("GDELT", "query", "gdelt.seendate"),
+        HistoricalIntelligenceProviderSpec("ReliefWeb", "", "reliefweb.date.created"),
+    ), alignment={"universe_sha256": "frozen"})
+    changed = manifest.exclude_provider("ReliefWeb", "HTTP 403; approval required")
+    calls = []
+
+    class Collector:
+        def __init__(self, provider):
+            self.provider = provider
+            self.store = store
+            self.checkpoint = checkpoint
+            self.window = timedelta(days=1)
+
+        def collect(self, start, end):
+            calls.append(self.provider)
+            return CollectionResult(0, 0, 0, 0, ())
+
+    MultiProviderHistoricalIntelligenceCollector((
+        Collector("GDELT"), Collector("ReliefWeb"),
+    ), manifest).collect(start, end)
+
+    assert changed == 1
+    assert calls == ["GDELT"]
+    assert manifest.provider_exclusion("ReliefWeb")["reason"] == (
+        "HTTP 403; approval required"
+    )
+
+
 def test_raw_summary_backfills_categories_and_reports_missing_months(tmp_path):
     market_store = HistoricalMarketDatasetStore(tmp_path / "markets.json")
     record = HistoricalMarketRecord(
@@ -1197,6 +1269,23 @@ def test_replay_adapter_excludes_post_resolution_candles_and_preserves_availabil
     assert converted.snapshots[0].resolved_yes is True
     assert converted.intelligence[0].available_at == item.available_at
     assert converted.replay_engine().intelligence[0].title == "Event"
+
+
+def test_replay_adapter_distinguishes_non_yes_no_contracts_from_missing_history():
+    market_record = HistoricalMarketRecord(
+        market_id="m", condition_id=None, question="How high?",
+        created_at=START.isoformat(), closed_at=(START + timedelta(days=2)).isoformat(),
+        outcomes=("Over", "Under"), token_ids={"OVER": YES_TOKEN, "UNDER": NO_TOKEN},
+        resolution_outcome="Over", price_history={
+            "OVER": (PriceCandle((START + timedelta(days=1)).isoformat(), .4),),
+            "UNDER": (PriceCandle((START + timedelta(days=1)).isoformat(), .6),),
+        },
+    )
+
+    converted = HistoricalDatasetReplayAdapter().convert([market_record], [])
+
+    assert converted.skipped_markets == 1
+    assert converted.market_exclusions == {"m": "non_binary_yes_no_contract"}
 
 
 @pytest.mark.parametrize(("body", "status", "metadata", "reason"), [
@@ -1365,7 +1454,7 @@ def test_strict_geopolitical_filter_requires_entity_and_event_structure():
     ("Khamenei out as Supreme Leader of Iran by June 30?", "LEADERSHIP"),
     ("US forcibly removes Khamenei from power by March 31?", "LEADERSHIP"),
     ("US and Iran sign an agreement by June 30?", "DIPLOMATIC"),
-    ("Will Trump physically sign US x Iran deal?", "LEADERSHIP"),
+    ("Will Trump physically sign US x Iran deal?", "DIPLOMATIC"),
     ("Will the United States blockade of the Strait of Hormuz be lifted?", "POLITICAL"),
 ])
 def test_strict_filter_accepts_targeted_transition_and_agreement_markets(question, category):

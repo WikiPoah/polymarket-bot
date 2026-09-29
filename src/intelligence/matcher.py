@@ -1,3 +1,4 @@
+# File-Version: 1.0.0
 """
 Utilities for matching geopolitical events to classified
 Polymarket markets.
@@ -160,6 +161,9 @@ def find_matching_markets(
     opportunities: list[TradingOpportunity] = []
 
     for market in markets:
+
+        if not market.supported_proposition:
+            continue
 
         (
             match_score,

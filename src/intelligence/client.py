@@ -1,4 +1,4 @@
-# File-Version: 1.0.0
+# File-Version: 1.2.0
 """
 Intelligence client.
 
@@ -29,6 +29,7 @@ class IntelligenceClient:
         providers: list[IntelligenceProvider],
         evidence_time: datetime | None = None,
         event_sink: Callable[[list[GeoPoliticalEvent]], None] | None = None,
+        clock: Callable[[], datetime] | None = None,
     ) -> None:
         """
         Initialise the intelligence client.
@@ -40,6 +41,7 @@ class IntelligenceClient:
         self._providers = providers
         self._evidence_time = evidence_time
         self._event_sink = event_sink
+        self._clock = clock or (lambda: datetime.now(timezone.utc))
         self._provider_status: dict[str, str] = {}
         self._provider_errors: list[str] = []
         self._provider_cache: dict[
@@ -146,10 +148,12 @@ class IntelligenceClient:
                     "Intelligence providers must return GeoPoliticalEvent objects."
                 )
 
-            self._provider_cache[cache_key] = deepcopy(provider_results)
-
             self._provider_status.setdefault(provider_name, "OK")
-            now = datetime.now(timezone.utc)
+            now = self._clock()
+            for event in provider_results:
+                if event.available_at is None:
+                    event.available_at = now
+            self._provider_cache[cache_key] = deepcopy(provider_results)
             details = self._provider_details.setdefault(
                 provider_name, self._empty_provider_details()
             )

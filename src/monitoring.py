@@ -1,9 +1,12 @@
+# File-Version: 1.0.0
 """Persistent status records for automated evaluation runs."""
 
 import json
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
+
+from src.persistence import PersistenceCorruptionError
 
 
 @dataclass(frozen=True)
@@ -48,20 +51,32 @@ class SystemStatusStore:
             return []
         try:
             payload = json.loads(self.path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            return []
+        except (OSError, json.JSONDecodeError) as error:
+            raise PersistenceCorruptionError(
+                self.path, "system-status file is unreadable or malformed"
+            ) from error
         if isinstance(payload, dict):
-            payload = payload.get("records", [])
+            if "records" not in payload:
+                raise PersistenceCorruptionError(
+                    self.path, "system-status state is missing its records collection"
+                )
+            payload = payload["records"]
         if not isinstance(payload, list):
-            return []
+            raise PersistenceCorruptionError(
+                self.path, "system-status records must be a list"
+            )
         statuses = []
-        for item in payload:
+        for index, item in enumerate(payload):
             if not isinstance(item, dict):
-                continue
+                raise PersistenceCorruptionError(
+                    self.path, f"system-status record {index} is invalid"
+                )
             try:
                 statuses.append(RunStatus.from_dict(item))
-            except (TypeError, ValueError):
-                continue
+            except (TypeError, ValueError) as error:
+                raise PersistenceCorruptionError(
+                    self.path, f"system-status record {index} is invalid"
+                ) from error
         return statuses
 
     def record(self, status: RunStatus) -> None:

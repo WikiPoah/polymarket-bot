@@ -1,4 +1,4 @@
-# File-Version: 1.1.1
+# File-Version: 1.3.1
 """Tests for paper-trading persistence and performance."""
 
 from datetime import datetime, timedelta
@@ -10,6 +10,7 @@ from src.intelligence.classification import EventType
 from src.models import GeoPoliticalEvent, ScoredEvent, TradingOpportunity
 from src.paper_trading.history import PaperTradingRecorder
 from src.paper_trading.performance import PerformanceTracker
+from src.persistence import PersistenceCorruptionError
 from src.strategy.engine import StrategyDecision
 from src.strategy.expected_value import StrategyAction
 
@@ -65,26 +66,111 @@ def test_empty_history_is_safe(tmp_path):
     assert metrics.profit_loss == 0.0
 
 
-def test_settlement_and_performance_metrics(tmp_path):
-    recorder = PaperTradingRecorder(tmp_path / "history.json")
-    yes = recorder.record(make_decision())
-    no = recorder.record(make_decision(StrategyAction.BUY_NO, .6))
-    recorder.settle(yes.id, True)
-    recorder.settle(no.id, False)
-    metrics = PerformanceTracker().calculate(recorder.load())
-    assert metrics.number_decisions == 2
-    assert metrics.winning_decisions == 2
-    assert metrics.losing_decisions == 0
-    assert metrics.win_rate == 1.0
-    assert metrics.profit_loss == pytest.approx(.1 * (.6 + .6))
+def test_malformed_history_raises_and_record_preserves_original_bytes(tmp_path):
+    path = tmp_path / "history.json"
+    original = b'{"records": [broken'
+    path.write_bytes(original)
+    recorder = PaperTradingRecorder(path)
+
+    with pytest.raises(PersistenceCorruptionError, match="history file is.*malformed"):
+        recorder.load()
+    with pytest.raises(PersistenceCorruptionError, match="refusing to overwrite"):
+        recorder.record(make_decision())
+
+    assert path.read_bytes() == original
 
 
-def test_losing_settlement_has_negative_profit(tmp_path):
+def test_structurally_invalid_history_is_not_treated_as_empty(tmp_path):
+    path = tmp_path / "history.json"
+    path.write_text(json.dumps({"version": 3, "records": {}}), encoding="utf-8")
+
+    with pytest.raises(PersistenceCorruptionError, match="records must be a list"):
+        PaperTradingRecorder(path).load()
+
+
+def test_successful_history_write_remains_atomic(tmp_path):
+    path = tmp_path / "history.json"
+    recorder = PaperTradingRecorder(path)
+
+    recorder.record(make_decision())
+
+    assert len(recorder.load()) == 1
+    assert not path.with_suffix(".json.tmp").exists()
+
+
+def test_winning_buy_yes_settlement_uses_stake_accounting(tmp_path):
     recorder = PaperTradingRecorder(tmp_path / "history.json")
-    decision = recorder.record(make_decision())
+    decision = recorder.record(make_decision(StrategyAction.BUY_YES, .4))
+
+    settled = recorder.settle(decision.id, True)
+
+    assert settled.result == "WIN"
+    assert settled.profit_loss == pytest.approx(.15)
+
+
+def test_losing_buy_yes_settlement_loses_full_stake(tmp_path):
+    recorder = PaperTradingRecorder(tmp_path / "history.json")
+    decision = recorder.record(make_decision(StrategyAction.BUY_YES, .4))
+
     settled = recorder.settle(decision.id, False)
+
     assert settled.result == "LOSS"
-    assert settled.profit_loss == pytest.approx(-.04)
+    assert settled.profit_loss == pytest.approx(-.1)
+
+
+def test_winning_buy_no_settlement_uses_stake_accounting(tmp_path):
+    recorder = PaperTradingRecorder(tmp_path / "history.json")
+    decision = recorder.record(make_decision(StrategyAction.BUY_NO, .6))
+
+    settled = recorder.settle(decision.id, False)
+
+    assert settled.result == "WIN"
+    assert settled.profit_loss == pytest.approx(.15)
+
+
+def test_losing_buy_no_settlement_loses_full_stake(tmp_path):
+    recorder = PaperTradingRecorder(tmp_path / "history.json")
+    decision = recorder.record(make_decision(StrategyAction.BUY_NO, .6))
+
+    settled = recorder.settle(decision.id, True)
+
+    assert settled.result == "LOSS"
+    assert settled.profit_loss == pytest.approx(-.1)
+
+
+@pytest.mark.parametrize(
+    ("action", "market_probability"),
+    [
+        (StrategyAction.BUY_YES, 0.0),
+        (StrategyAction.BUY_NO, 1.0),
+    ],
+)
+def test_zero_price_selected_side_is_invalid_without_profit(
+    tmp_path,
+    action,
+    market_probability,
+):
+    recorder = PaperTradingRecorder(tmp_path / "history.json")
+    decision = recorder.record(make_decision(action, market_probability))
+
+    settled = recorder.settle(decision.id, action == StrategyAction.BUY_YES)
+
+    assert settled.result == "INVALID"
+    assert settled.profit_loss == 0.0
+
+
+@pytest.mark.parametrize("market_probability", [None, "0.4", float("nan")])
+def test_non_numeric_or_non_finite_settlement_price_fails_closed(
+    tmp_path,
+    market_probability,
+):
+    recorder = PaperTradingRecorder(tmp_path / "history.json")
+    decision = recorder.record(make_decision(StrategyAction.BUY_YES, market_probability))
+
+    settled = recorder.settle(decision.id, True)
+
+    assert settled.result == "INVALID"
+    assert settled.profit_loss == 0.0
 
 
 def test_ignored_decision_is_not_a_loss(tmp_path):

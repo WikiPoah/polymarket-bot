@@ -1,8 +1,10 @@
+# File-Version: 1.0.0
 """
 Market probability extraction.
 """
 
 import json
+import math
 
 from src.models import TradingOpportunity
 
@@ -12,9 +14,9 @@ class MarketProbabilityExtractor:
     Extracts the market's implied probability for the expected outcome.
     """
 
-    def extract(self, opportunity: TradingOpportunity) -> float:
+    def extract(self, opportunity: TradingOpportunity) -> float | None:
         """
-        Returns the market probability between 0.0 and 1.0.
+        Return the YES price, or ``None`` when no valid tradable price exists.
         """
 
         market = opportunity.market
@@ -28,51 +30,33 @@ class MarketProbabilityExtractor:
                 market.get("outcomePrices", "[]")
             )
         except (TypeError, ValueError, json.JSONDecodeError):
-            return 0.5
+            return None
 
-        if len(outcomes) != len(prices):
-            return 0.5
+        if (
+            not isinstance(outcomes, list)
+            or not isinstance(prices, list)
+            or len(outcomes) != len(prices)
+        ):
+            return None
 
-        expected_outcome = opportunity.expected_outcome
+        yes_prices = [
+            price
+            for outcome, price in zip(outcomes, prices)
+            if isinstance(outcome, str) and outcome.strip().casefold() == "yes"
+        ]
+        if len(yes_prices) != 1:
+            return None
 
-        if expected_outcome.name != "OTHER":
-            expected = (
-                expected_outcome.name
-                .replace("_", " ")
-                .title()
-            )
-
-            for outcome, price in zip(outcomes, prices):
-                if outcome.lower() == expected.lower():
-                    return self._valid_price(price)
-
-            # Binary Polymarket markets represent the classified
-            # expected outcome as YES when no explicit label exists.
-            for outcome, price in zip(outcomes, prices):
-                if outcome.lower() == "yes":
-                    return self._valid_price(price)
-
-        event_outcome = opportunity.event.event.outcome
-        expected = (
-            event_outcome.name
-            .replace("_", " ")
-            .title()
-        )
-
-        for outcome, price in zip(outcomes, prices):
-            if outcome.lower() == expected.lower():
-                return self._valid_price(price)
-
-        return 0.5
+        return self._valid_price(yes_prices[0])
 
     @staticmethod
-    def _valid_price(price) -> float:
+    def _valid_price(price) -> float | None:
         try:
             value = float(price)
         except (TypeError, ValueError):
-            return 0.5
+            return None
 
-        if not 0.0 <= value <= 1.0:
-            return 0.5
+        if not math.isfinite(value) or not 0.0 < value < 1.0:
+            return None
 
         return value

@@ -1,3 +1,4 @@
+# File-Version: 1.0.0
 """
 Rule-based event classifier.
 
@@ -91,7 +92,7 @@ def contains_keyword(
     Check whether a keyword appears as a full word.
     """
 
-    pattern = rf"\b{re.escape(keyword)}\b"
+    pattern = rf"(?<!\w){re.escape(keyword)}(?!\w)"
 
     return re.search(
         pattern,

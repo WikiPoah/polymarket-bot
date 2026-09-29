@@ -1,4 +1,4 @@
-# File-Version: 1.0.0
+# File-Version: 1.0.1
 """Application entry point for one-shot or continuous paper evaluation."""
 
 import argparse
@@ -80,9 +80,12 @@ def _print_result(result: EvaluationResult) -> None:
             f"Estimated Probability: {decision.estimated_probability:.1%}"
         )
 
-        print(
-            f"Market Probability: {decision.market_probability:.1%}"
+        market_probability = (
+            f"{decision.market_probability:.1%}"
+            if decision.market_probability is not None
+            else "Unavailable"
         )
+        print(f"Market Probability: {market_probability}")
 
         print(
             f"Edge: {decision.edge:+.1%}"

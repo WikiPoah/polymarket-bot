@@ -1,334 +1,260 @@
-<!-- File-Version: 1.3.2 -->
-# Polymarket Bot
+<!-- File-Version: 1.5.0 -->
+# PolymarketBot
 
-Polymarket Bot is a Python backend for researching geopolitical prediction
-markets. It retrieves active Polymarket markets, gathers external intelligence,
-classifies and matches relevant events, estimates probabilities, applies risk
-rules, and records paper-trading decisions for review and historical analysis.
+PolymarketBot is an explainable Python system for analysing a supported subset
+of geopolitical prediction markets. It combines prediction-market data with
+normalized external evidence, applies deterministic rule-based classification
+and relevance matching, generates heuristic probability estimates and
+simulated YES/NO decisions, and records explainable paper results for inspection
+through a local dashboard.
 
-The project is under active development. It does **not** place live orders or
-control real funds.
+The repository also contains historical collection, replay, and evaluation
+tooling designed around reproducibility, resumable collection, timestamp
+provenance, and prevention of future-data leakage.
 
-## What the bot focuses on
+This is a software-engineering and research project: it uses rule-based NLP,
+not an LLM; produces paper decisions, not live trades; and makes no claim of
+profitability or calibrated predictive performance.
 
-The bot is focused on **geopolitical prediction markets**, not exclusively oil.
-Oil and energy disruption are important parts of that scope because conflicts,
-sanctions, shipping constraints, and supply decisions can affect energy-related
-markets.
+## What it demonstrates
 
-The current classification system covers:
+- Modular market and intelligence-provider boundaries for Polymarket Gamma,
+  GDELT, RSS, ReliefWeb, Media Cloud research archives, and offline fixtures.
+- Normalization of external reports into shared event models with provider,
+  publisher, publication-time, availability-time, and source provenance.
+- Deterministic rule-based market, event, outcome, entity, and topic
+  classification with a deliberately narrow supported-proposition gate.
+- Proposition-aware relevance filtering, evidence scoring, market matching,
+  same-publisher deduplication, and independent-source aggregation.
+- Explainable heuristic probabilities and YES/NO paper decisions with recorded
+  scores, match reasons, confidence, edge, and risk rationale.
+- Fail-closed validation for malformed market prices, unsupported propositions,
+  unsafe persistent state, and invalid settlement inputs.
+- Consistent stake accounting: `position_size` is the fraction of normalized
+  portfolio capital staked on the selected side.
+- Atomic JSON persistence, corruption detection, runner/provider status, and a
+  read-only local monitoring dashboard.
+- A deterministic offline integration demo that exercises the production
+  pipeline without credentials or network access.
+- Resumable historical collection with checkpoints, retry queues, partition
+  manifests, SHA-256 integrity checks, and explicit coverage/readiness gates.
+- Timestamp-aware replay, causal event clustering, publisher-aware independent
+  confirmation, cluster-safe chronological splits, Brier score, and log-loss
+  evaluation.
+- Automated regression testing and GitHub Actions CI on Python 3.10 and 3.13.
 
-- oil, natural gas, OPEC, and energy disruption;
-- military strikes, invasions, exercises, and escalation;
-- sanctions and economic policy;
-- shipping disruption and strategic waterways such as the Red Sea and Strait
-  of Hormuz;
-- leadership changes and elections;
-- nuclear, diplomatic, and terrorism-related events.
+## Architecture
 
-The bot evaluates Polymarket contracts connected to these events. It does not
-trade oil futures, commodities, or securities.
-
-Precision is favored over broad keyword matching. An intelligence event must
-provide evidence for the market's actual proposition before it can become a
-trading opportunity.
-
-## How it works
-
-```text
-Polymarket active markets
-  -> geopolitical market filtering
-  -> market classification and query building
-  -> GDELT, RSS, and ReliefWeb intelligence
-  -> event and outcome classification
-  -> relevance filtering and evidence scoring
-  -> market matching
-  -> probability, expected-value, and risk evaluation
-  -> paper-trading records and dashboard
+```mermaid
+flowchart TD
+    A[Polymarket market source] --> B[Geopolitical filter]
+    B --> C[Market classification and supported-proposition gate]
+    C --> D[Market-specific query builder]
+    D --> E[Intelligence providers or offline fixture]
+    E --> F[Normalize, cache, deduplicate, aggregate evidence]
+    F --> G[Event and outcome classification]
+    C --> H[Relevance filtering, scoring, and matching]
+    G --> H
+    H --> I[Heuristic probability and strategy]
+    I --> J[Portfolio risk and paper stake accounting]
+    J --> K[Atomic history and system status]
+    K --> L[Local dashboard]
+    K --> M[Historical replay and evaluation]
 ```
 
-The repository also contains resumable historical collectors and a
-timestamp-aware replay path. Historical evaluation is designed to expose only
-information available at each replay timestamp.
+Live providers and the offline fixture share the same downstream models and
+pipeline. The fixture adapters supply raw deterministic inputs; they do not
+construct final decisions or duplicate the production algorithms.
 
-## Requirements
+## Quick start: deterministic offline demo
 
-- Python 3.10 or newer
-- Internet access for live market and intelligence retrieval
-- A GDELT Cloud API key for the GDELT provider
-- A ReliefWeb-approved application name for ReliefWeb access
+The offline demo is the primary way to explore the project. It requires Python
+3.10 or newer, uses tracked fixture inputs, performs no network calls, and does
+not require an `.env` file.
 
-The dashboard demo does not require API credentials or internet access.
-
-## Installation
-
-From the repository root:
+From a fresh clone:
 
 ```bash
+git clone https://github.com/WikiPoah/polymarket-bot.git
+cd polymarket-bot
 python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
 python -m pip install -r requirements-dev.txt
+```
+
+Run the real pipeline against the deterministic fixture:
+
+```bash
+python -m src.demo
+```
+
+The demo loads four raw markets and five provider-style evidence records. It
+filters one sports market, rejects one explicitly negated proposition, produces
+one accepted `BUY YES` paper decision, and ignores one opportunity whose edge
+is below the strategy threshold. It safely recreates only:
+
+```text
+data/demo_run/paper_trading_history.json
+data/demo_run/system_status.json
+```
+
+Inspect the generated JSON if desired:
+
+```bash
+python -m json.tool data/demo_run/paper_trading_history.json
+python -m json.tool data/demo_run/system_status.json
+```
+
+Start the dashboard with both generated files:
+
+```bash
+python -m src.dashboard \
+  --history data/demo_run/paper_trading_history.json \
+  --status data/demo_run/system_status.json
+```
+
+Open `http://127.0.0.1:8080`. The dashboard shows the decision funnel,
+accepted and ignored ideas, rationale and evidence, paper outcomes, provider
+freshness, and runner status. Press `Ctrl+C` to stop it.
+
+Run the verification suite:
+
+```bash
+python -m pytest -q
+python -m ruff check .
+```
+
+On Windows PowerShell, activate the environment with
+`.venv\Scripts\Activate.ps1`; the remaining `python -m ...` commands are the
+same.
+
+## Live paper-evaluation mode
+
+Live mode fetches active markets from the public Polymarket Gamma API and
+queries configured intelligence providers. It records paper decisions only and
+contains no order-placement integration.
+
+Copy the environment template and provide only credentials or identifiers you
+are authorized to use:
+
+```bash
 cp .env.example .env
+python -m src.main
 ```
 
-For a runtime-only installation without test and lint tools, install
-`requirements.txt` instead.
+| Setting | Use |
+| --- | --- |
+| `GDELT_API_KEY` | GDELT Cloud intelligence retrieval |
+| `RELIEFWEB_APPNAME` | Exact ReliefWeb-approved application identifier |
+| `MEDIA_CLOUD_API_KEY` | Optional historical Media Cloud collection |
+| `MEDIA_CLOUD_COLLECTION_IDS` | Media Cloud collection selection |
 
-On Windows PowerShell, activate the environment with:
+RSS feeds are configured in `src/config.py`. Provider authorization, schemas,
+rate limits, and availability can change; failures are recorded and isolated
+where possible. Continuous paper evaluation is available with
+`python -m src.main --interval 300`, and diagnostic logging with
+`python -m src.main --log-level DEBUG`.
 
-```powershell
-.venv\Scripts\Activate.ps1
-```
+Live runtime histories and status files are local, ignored JSON artifacts under
+`data/`. The dashboard can read them with its default paths via
+`python -m src.dashboard`.
 
-All commands below assume they are run from the repository root. They use the
-virtual environment's Python directly, so activation is optional.
+## Historical collection and evaluation
 
-## Show the dashboard with demo data
+The historical subsystem is implemented engineering infrastructure, not a
+completed performance benchmark. It provides:
 
-This is the quickest way to demonstrate the project. It creates a separate demo
-history file and does not contact Polymarket or any intelligence provider.
+- frozen market universes and provider/day partition manifests;
+- SHA-256 checks for frozen universe and collection-plan integrity;
+- atomic stores, durable checkpoints, bounded retries, cooldowns, resumable
+  pagination, and explicit incomplete/failed/excluded states;
+- separate `published_at` and provider-derived `available_at` provenance;
+- stable provider, publisher, record, story, and causal event identities;
+- conservative causal clustering and publisher-aware independent confirmation;
+- replay that exposes only evidence and prices available at each historical
+  timestamp;
+- chronological splits that keep related market/event clusters together;
+- Brier score, log loss, calibration/composition diagnostics, and readiness
+  gates for price coverage, provider completeness, leakage, sample size, event
+  clusters, categories, and split viability.
 
-### 1. Generate demo paper-trading history
+Collection output and large raw archives are intentionally excluded from Git.
+A fresh clone contains the evaluation code and tests, but not the local
+historical datasets required to reproduce the larger pilot numbers. Inspect an
+existing local collection without making requests with:
 
 ```bash
-.venv/bin/python -m src.dashboard.demo
-```
-
-The command writes:
-
-```text
-data/demo_paper_trading_history.json
-```
-
-### 2. Start the dashboard
-
-```bash
-.venv/bin/python -m src.dashboard \
-  --history data/demo_paper_trading_history.json
-```
-
-The server listens on the local machine at:
-
-```text
-http://127.0.0.1:8080
-```
-
-Open that address in a browser. The dashboard shows:
-
-- system health and provider freshness;
-- a funnel from evaluated opportunities to accepted, rejected, and ignored
-  decisions;
-- accepted paper-trade ideas with the bot estimate, market probability, edge,
-  confidence, catalyst, sources, and rationale;
-- settled paper-trading performance when outcomes become available;
-- recent activity;
-- expandable ignored and portfolio-risk-rejected decisions.
-
-Demo history contains trading decisions but no live runner status, so system
-health can display `UNKNOWN`. That is expected.
-
-### How to read the dashboard
-
-The decision funnel separates candidate evaluation from paper-trade acceptance:
-
-- **Evaluated** is every market-and-event opportunity considered by the
-  strategy.
-- **Accepted** is a `BUY YES` or `BUY NO` paper-trade idea that passed the
-  strategy and portfolio-risk checks.
-- **Risk rejected** is an otherwise actionable idea blocked by portfolio-level
-  controls such as exposure, confidence, or position limits.
-- **Ignored** is an opportunity that did not pass the strategy thresholds.
-- **Settled** is an accepted paper trade whose market outcome is known.
-
-An accepted idea is not evidence that the bot was correct. The dashboard shows
-win rate and realized paper profit/loss only after accepted trades settle.
-Until then, use the bot estimate, market probability, edge, confidence,
-intelligence catalyst, sources, and rationale to review why the idea was
-accepted.
-
-Press `Ctrl+C` in the terminal to stop the server.
-
-### Use another port
-
-```bash
-.venv/bin/python -m src.dashboard \
-  --history data/demo_paper_trading_history.json \
-  --port 8090
-```
-
-Then open `http://127.0.0.1:8090`.
-
-The dashboard binds to `127.0.0.1` by default. Keep that default unless you
-specifically intend to expose it to another machine on a trusted network.
-
-## Configuration
-
-Configuration is loaded from `.env`. Never commit the populated `.env` file.
-
-| Variable | Required | Purpose |
-| --- | --- | --- |
-| `GDELT_API_KEY` | For live GDELT retrieval | GDELT Cloud API authentication |
-| `RELIEFWEB_APPNAME` | For ReliefWeb retrieval | Exact application name approved by ReliefWeb |
-| `MEDIA_CLOUD_API_KEY` | Optional | Media Cloud historical collection |
-| `MEDIA_CLOUD_COLLECTION_IDS` | Optional | Comma-separated Media Cloud collection IDs |
-
-ReliefWeb may reject arbitrary application names with HTTP 403. Use only the
-exact name approved for your application; do not attempt to bypass provider
-access controls.
-
-Default RSS sources and general thresholds are defined in `src/config.py`.
-
-## Run a live paper evaluation
-
-The live runner retrieves the 100 highest-volume active Polymarket markets,
-filters them to geopolitical markets, gathers intelligence, evaluates matching
-opportunities, and records paper decisions. The bounded scan keeps each cycle
-responsive while prioritizing markets with meaningful activity. It does not
-submit orders.
-
-Configure `.env`, then run one evaluation:
-
-```bash
-.venv/bin/python -m src.main
-```
-
-Normal runs show only the concise evaluation and decision summary. To inspect
-provider queries, event classification, relevance filtering, scoring, and
-matching, enable diagnostic logging:
-
-```bash
-.venv/bin/python -m src.main --log-level DEBUG
-```
-
-Use `--log-level INFO` for run-level pipeline progress without per-event
-diagnostics. The default level is `WARNING`.
-
-Default runtime files are:
-
-```text
-data/paper_trading_history.json
-data/system_status.json
-data/historical_markets.json
-data/historical_intelligence.json
-```
-
-Provider failures are isolated where possible. For example, an unavailable
-GDELT or ReliefWeb provider is reported while other configured providers can
-still contribute intelligence.
-
-To evaluate continuously with a fixed delay between completed runs:
-
-```bash
-.venv/bin/python -m src.main --interval 300
-```
-
-Press `Ctrl+C` to stop the runner.
-
-To view records produced by the live runner, start the dashboard with its
-default history path. Do not pass the demo-history option when reviewing live
-paper-evaluation records:
-
-```bash
-.venv/bin/python -m src.dashboard
-```
-
-Then open `http://127.0.0.1:8080`.
-
-## Run the tests
-
-Run the full test suite from the repository root:
-
-```bash
-.venv/bin/python -m pytest -q
-```
-
-Run a focused component test while developing:
-
-```bash
-.venv/bin/python -m pytest -q tests/test_pipeline.py
-```
-
-Generate a terminal coverage report:
-
-```bash
-.venv/bin/python -m pytest -q --cov=src --cov-report=term-missing
-```
-
-Run the static checks:
-
-```bash
-.venv/bin/python -m ruff check .
-```
-
-GitHub Actions runs lint and tests on Python 3.10 and 3.13 for pushes and pull
-requests.
-
-## Historical dataset workflow
-
-Historical collection is separate from the live paper runner. Collection is
-resumable and uses checkpoints, manifests, provider partitions, and explicit
-coverage validation.
-
-Collection output is local runtime data and is ignored by Git. Preserve any
-dataset needed for an experiment outside disposable working directories.
-
-Inspect an existing collection without making network requests:
-
-```bash
-.venv/bin/python -m src.historical_dataset \
+python -m src.historical_dataset \
   --output-dir data/historical_selection_2026-02_to_2026-08 \
   --intelligence-status
 ```
 
-Before a long collection, use a separate output directory for a short pilot:
+Coverage and evaluation commands for an available local dataset are:
 
 ```bash
-.venv/bin/python -m src.historical_dataset \
-  --start 2026-03-01T00:00:00+00:00 \
-  --end 2026-03-04T00:00:00+00:00 \
-  --output-dir data/historical_intelligence_pilot \
-  --intelligence-only
+python -m src.evaluation.coverage --dataset-dir <dataset-directory>
+python -m src.evaluation --dataset-dir <dataset-directory> --generate-only
 ```
 
-Do not point experiments at a frozen production dataset. Do not start replay
-until the required coverage and leakage-safety checks pass.
+The current research record documents incomplete provider coverage and treats
+all reported pilot metrics as diagnostic, not as model-selection or
+profitability evidence: [historical benchmark dataset audit](research/2026-08-12-historical-benchmark-dataset-audit.md).
 
-## Project structure
+## Testing and CI
+
+The regression suite covers market pagination, provider normalization,
+classification boundaries, unsupported propositions, evidence relevance and
+deduplication, probability validation, BUY YES/BUY NO sizing, portfolio risk,
+stake settlement, persistence corruption, deterministic demo behavior,
+historical checkpoints, temporal leakage protection, causal clustering,
+forecast metrics, and readiness gates.
+
+At this final presentation pass, the full suite contains 285 passing tests.
+GitHub Actions runs Ruff and the complete pytest/coverage suite on Python 3.10
+and 3.13 for every push and pull request; the executable suite, rather than the
+stated count, is the source of truth.
+
+## Repository layout
 
 ```text
-src/
-  main.py                 command-line entry point
-  api.py                  Polymarket Gamma API client
-  filters.py              geopolitical market filtering
-  intelligence/           providers, classification, relevance, scoring, matching
-  strategy/               probability, expected value, sizing, and risk rules
-  paper_trading/          decision history, analytics, backtesting, and replay
-  dashboard/              local monitoring dashboard and demo data
-  historical_dataset.py   resumable historical collection and validation
-  coverage_probe.py       read-only historical source coverage checks
-  monitoring.py           persistent runner and provider status
-  runner.py               one-shot and continuous evaluation orchestration
-tests/                     automated regression tests
-research/                  investigations and reproducible project records
-data/                      selected fixtures, datasets, and runtime output
+src/api.py                 Polymarket Gamma client
+src/demo.py                official deterministic offline demo
+src/intelligence/          providers, normalization, classification, matching
+src/strategy/              probabilities, expected value, sizing, risk
+src/paper_trading/         persistence, analytics, backtesting, replay
+src/dashboard/             local read-only monitoring dashboard
+src/evaluation/            clustering, observations, splits, metrics, readiness
+src/historical_dataset.py  resumable historical collection and validation
+tests/                     unit and integration regression suite
+data/demo_fixture.json     tracked deterministic raw demo inputs
+research/                  reproducible investigations and limitations
 ```
 
-## Current limitations
+## Limitations
 
-- Paper trading only; there is no live order execution.
-- Probability estimation and thresholds are heuristic and require calibration
-  against leakage-safe historical results.
-- Intelligence quality depends on provider availability, authorization, and
-  coverage.
-- The system supports selected geopolitical entities and event categories; it
-  is not a general-purpose news trading engine.
-- The dashboard is a local operational monitor, not a hardened public web
-  application.
+- No live trading or order execution is implemented.
+- No profitability claim is made; accepted demo decisions are unresolved paper
+  examples, not evidence of predictive success.
+- Probability estimates and thresholds are deterministic heuristics, not
+  calibrated forecasts or machine-learned models.
+- Classification is rule-based NLP over a deliberately narrow proposition
+  grammar and supported set of geopolitical entities and event types.
+- Historical provider collection and benchmark coverage remain incomplete;
+  current pilot results are unsuitable for estimator tuning or performance
+  claims.
+- Historical bid/ask spread, order-book depth, liquidity, fill probability,
+  fees, and slippage are unavailable or incomplete, depending on the source.
+- Live external providers can change schemas, authorization, rate limits, or
+  availability.
+- The dashboard is a local operational/review interface, not a hardened public
+  web application.
+- JSON persistence is intentional for this project scope. It is atomic and
+  corruption-aware but is not a multi-user transactional database.
 
-## Safety
+## Safety and disclaimer
 
-This project is for software engineering, research, and paper-trading analysis.
-Prediction markets involve financial risk. Do not treat generated decisions as
-financial advice, and do not connect the system to real execution without
-independent validation, controls, and legal review.
+This repository is for software-engineering demonstration, research, and paper
+analysis. Prediction markets involve financial and legal risk. Generated
+probabilities and decisions are not financial advice and should not be connected
+to real execution without independent validation, controls, and legal review.

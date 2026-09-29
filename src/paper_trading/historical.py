@@ -1,4 +1,4 @@
-# File-Version: 1.0.0
+# File-Version: 1.4.0
 """Timestamped market/intelligence storage and leakage-safe historical replay."""
 
 from copy import deepcopy
@@ -15,6 +15,7 @@ from src.paper_trading.analytics import AnalyticsReport, AnalyticsSummary, Perfo
 from src.paper_trading.backtesting import BacktestEngine
 from src.paper_trading.history import PaperTradingRecorder
 from src.paper_trading.models import PaperDecision
+from src.persistence import PersistenceCorruptionError
 from src.strategy.engine import StrategyDecision
 from src.strategy.expected_value import StrategyAction
 
@@ -81,22 +82,39 @@ class HistoricalMarketStore:
             return []
         try:
             payload = json.loads(self.path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
+        except (OSError, json.JSONDecodeError) as error:
             self.invalid_records = 1
-            return []
-        records = payload.get("records", []) if isinstance(payload, dict) else payload
+            raise PersistenceCorruptionError(
+                self.path, "historical market file is unreadable or malformed"
+            ) from error
+        if isinstance(payload, dict):
+            if "records" not in payload:
+                self.invalid_records = 1
+                raise PersistenceCorruptionError(
+                    self.path, "historical market state is missing its records collection"
+                )
+            records = payload["records"]
+        else:
+            records = payload
         if not isinstance(records, list):
             self.invalid_records = 1
-            return []
+            raise PersistenceCorruptionError(
+                self.path, "historical market records must be a list"
+            )
         snapshots = []
-        for record in records:
+        for index, record in enumerate(records):
             try:
                 snapshots.append(HistoricalMarketSnapshot(**record))
-            except (TypeError, ValueError):
+            except (TypeError, ValueError) as error:
                 self.invalid_records += 1
+                raise PersistenceCorruptionError(
+                    self.path, f"historical market record {index} is invalid"
+                ) from error
         return snapshots
 
     def save(self, snapshots: list[HistoricalMarketSnapshot]) -> None:
+        if self.path.exists():
+            self.load()
         self.path.parent.mkdir(parents=True, exist_ok=True)
         temporary = self.path.with_suffix(f"{self.path.suffix}.tmp")
         temporary.write_text(json.dumps({
@@ -152,6 +170,9 @@ class HistoricalIntelligenceRecord:
     significance: float | None = None
     confidence: float | None = None
     market_sensitivity: float | None = None
+    provider: str | None = None
+    publisher: str | None = None
+    record_id: str | None = None
 
     def __post_init__(self) -> None:
         if not self.title:
@@ -165,7 +186,10 @@ class HistoricalIntelligenceRecord:
             subcategory="", country=self.country, region=None, continent=None,
             significance=self.significance, confidence=self.confidence,
             market_sensitivity=self.market_sensitivity, source_url=self.source_url,
-            published_at=_parse_time(self.published_at), source=self.source,
+            published_at=_parse_time(self.published_at),
+            available_at=_parse_time(self.available_at), source=self.source,
+            provider=self.provider or self.source,
+            publisher=self.publisher or "",
         )
 
 
@@ -182,22 +206,40 @@ class HistoricalIntelligenceStore:
             return []
         try:
             payload = json.loads(self.path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
+        except (OSError, json.JSONDecodeError) as error:
             self.invalid_records = 1
-            return []
-        records = payload.get("records", []) if isinstance(payload, dict) else payload
+            raise PersistenceCorruptionError(
+                self.path, "historical intelligence file is unreadable or malformed"
+            ) from error
+        if isinstance(payload, dict):
+            if "records" not in payload:
+                self.invalid_records = 1
+                raise PersistenceCorruptionError(
+                    self.path,
+                    "historical intelligence state is missing its records collection",
+                )
+            records = payload["records"]
+        else:
+            records = payload
         if not isinstance(records, list):
             self.invalid_records = 1
-            return []
+            raise PersistenceCorruptionError(
+                self.path, "historical intelligence records must be a list"
+            )
         events = []
-        for record in records:
+        for index, record in enumerate(records):
             try:
                 events.append(HistoricalIntelligenceRecord(**record))
-            except (TypeError, ValueError):
+            except (TypeError, ValueError) as error:
                 self.invalid_records += 1
+                raise PersistenceCorruptionError(
+                    self.path, f"historical intelligence record {index} is invalid"
+                ) from error
         return events
 
     def save(self, records: list[HistoricalIntelligenceRecord]) -> None:
+        if self.path.exists():
+            self.load()
         self.path.parent.mkdir(parents=True, exist_ok=True)
         temporary = self.path.with_suffix(f"{self.path.suffix}.tmp")
         temporary.write_text(json.dumps({
@@ -380,8 +422,10 @@ class HistoricalReplayEngine:
 
     @staticmethod
     def _capital_at_risk(decision: PaperDecision) -> float:
-        if decision.decision == StrategyAction.BUY_YES.value:
-            return decision.position_size * decision.market_probability
-        if decision.decision == StrategyAction.BUY_NO.value:
-            return decision.position_size * (1.0 - decision.market_probability)
+        """Return the fraction of portfolio capital staked on a trade."""
+        if decision.decision in {
+            StrategyAction.BUY_YES.value,
+            StrategyAction.BUY_NO.value,
+        }:
+            return decision.position_size
         return 0.0

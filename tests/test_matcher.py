@@ -1,3 +1,4 @@
+# File-Version: 1.0.0
 """
 Tests for the market matcher.
 """
@@ -49,6 +50,7 @@ def create_market() -> ClassifiedMarket:
         classified_region=Region.EAST_ASIA,
         countries=["China"],
         actors=["Xi Jinping"],
+        supported_proposition=True,
     )
 
 
@@ -169,6 +171,19 @@ def test_rejects_china_economic_policy_event():
     opportunities = find_matching_markets(
         ScoredEvent(event=event, score=80),
         [create_market()],
+    )
+
+    assert opportunities == []
+
+
+def test_rejects_market_marked_as_unsupported():
+    market = create_market()
+    market.supported_proposition = False
+    market.unsupported_reason = "Unsupported proposition: explicit negation."
+
+    opportunities = find_matching_markets(
+        ScoredEvent(event=create_event(), score=80),
+        [market],
     )
 
     assert opportunities == []

@@ -1,7 +1,9 @@
+# File-Version: 1.1.0
 """
 Rule-based outcome classifier.
 """
 
+from src.intelligence.classifier import contains_keyword
 from src.intelligence.outcomes import Outcome
 from src.models import GeoPoliticalEvent
 
@@ -9,9 +11,16 @@ from src.models import GeoPoliticalEvent
 OUTCOME_KEYWORDS = {
     Outcome.LEADER_REMOVED: [
         "resign",
+        "resigns",
+        "resigned",
         "resignation",
         "step down",
         "removed",
+        "from power",
+        "leave office",
+        "leaves office",
+        "left office",
+        "out as",
         "ousted",
         "impeached",
         "vote of no confidence",
@@ -23,9 +32,11 @@ OUTCOME_KEYWORDS = {
     ],
     Outcome.MILITARY_ESCALATION: [
         "missile",
+        "missiles",
         "airstrike",
         "bombing",
         "strike",
+        "strikes",
         "shelling",
         "offensive",
         "mobilization",
@@ -37,8 +48,11 @@ OUTCOME_KEYWORDS = {
     ],
     Outcome.SANCTIONS: [
         "sanction",
+        "sanctions",
         "embargo",
+        "embargoes",
         "restriction",
+        "restrictions",
     ],
     Outcome.ECONOMIC_POLICY: [
         "interest rate",
@@ -46,29 +60,38 @@ OUTCOME_KEYWORDS = {
         "inflation",
         "gdp",
         "tariff",
+        "tariffs",
     ],
     Outcome.ENERGY_DISRUPTION: [
         "oil",
         "gas",
         "pipeline",
+        "pipelines",
     ],
     Outcome.SHIPPING_DISRUPTION: [
         "shipping",
         "port",
+        "ports",
         "vessel",
+        "vessels",
         "red sea",
     ],
     Outcome.NATURAL_DISASTER: [
         "earthquake",
+        "earthquakes",
         "flood",
+        "floods",
         "wildfire",
         "hurricane",
         "typhoon",
     ],
     Outcome.ELECTION_RESULT: [
         "election",
+        "elections",
         "vote",
+        "votes",
         "ballot",
+        "ballots",
         "poll result",
     ],
 }
@@ -87,7 +110,7 @@ class OutcomeClassifier:
         text = f"{event.title} {event.summary}".lower()
 
         for outcome, keywords in OUTCOME_KEYWORDS.items():
-            if any(keyword in text for keyword in keywords):
+            if any(contains_keyword(text, keyword) for keyword in keywords):
                 event.outcome = outcome
                 break
 

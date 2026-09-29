@@ -1,3 +1,4 @@
+# File-Version: 1.1.0
 """Regression tests for portfolio-level paper-trading safeguards."""
 
 from src.paper_trading.models import PaperDecision
@@ -40,6 +41,17 @@ def test_valid_opportunity_is_accepted():
     assert result.accepted
 
 
+def test_valid_buy_no_with_positive_stake_is_accepted():
+    result = PortfolioRiskManager().check(make_decision(
+        action=StrategyAction.BUY_NO,
+        edge=-.3,
+        expected_value=.3,
+        position_size=.08,
+    ))
+
+    assert result.accepted
+
+
 def test_confidence_and_edge_thresholds_reject():
     manager = PortfolioRiskManager()
     assert not manager.check(make_decision(confidence=.5)).accepted
@@ -71,4 +83,10 @@ def test_rejection_becomes_ignore_with_reason():
 def test_invalid_probability_is_rejected():
     assert not PortfolioRiskManager().check(
         make_decision(market_probability=1.5)
+    ).accepted
+
+
+def test_missing_probability_is_rejected_without_type_error():
+    assert not PortfolioRiskManager().check(
+        make_decision(market_probability=None)
     ).accepted

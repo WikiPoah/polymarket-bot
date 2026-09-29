@@ -1,11 +1,15 @@
-# File-Version: 1.0.0
+# File-Version: 1.3.1
 """JSON decision history for paper trading."""
 
 import json
+import math
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from typing import Callable
+from uuid import uuid4
 
 from src.paper_trading.models import PaperDecision
+from src.persistence import PersistenceCorruptionError
 from src.strategy.engine import StrategyDecision
 from src.strategy.expected_value import StrategyAction
 
@@ -13,8 +17,15 @@ from src.strategy.expected_value import StrategyAction
 class PaperTradingRecorder:
     """Persist decisions and optional binary-market settlements."""
 
-    def __init__(self, path: str | Path = "data/paper_trading_history.json") -> None:
+    def __init__(
+        self,
+        path: str | Path = "data/paper_trading_history.json",
+        clock: Callable[[], datetime] | None = None,
+        id_factory: Callable[[], str] | None = None,
+    ) -> None:
         self.path = Path(path)
+        self.clock = clock or (lambda: datetime.now(timezone.utc))
+        self.id_factory = id_factory or (lambda: str(uuid4()))
         self.run_id = ""
         self.duplicate_window = timedelta(0)
 
@@ -27,24 +38,37 @@ class PaperTradingRecorder:
             return []
         try:
             payload = json.loads(self.path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            return []
+        except (OSError, json.JSONDecodeError) as error:
+            raise PersistenceCorruptionError(
+                self.path, "paper-trading history file is unreadable or malformed"
+            ) from error
         if isinstance(payload, dict):
-            payload = payload.get("records", [])
+            if "records" not in payload:
+                raise PersistenceCorruptionError(
+                    self.path, "paper-trading history is missing its records collection"
+                )
+            payload = payload["records"]
         if not isinstance(payload, list):
-            return []
+            raise PersistenceCorruptionError(
+                self.path, "paper-trading history records must be a list"
+            )
         decisions = []
-        for item in payload:
+        for index, item in enumerate(payload):
             if not isinstance(item, dict):
-                continue
+                raise PersistenceCorruptionError(
+                    self.path, f"paper-trading history record {index} is invalid"
+                )
             try:
                 decisions.append(PaperDecision.from_dict(item))
-            except (TypeError, ValueError):
-                # A damaged record must not make the remaining history unreadable.
-                continue
+            except (TypeError, ValueError) as error:
+                raise PersistenceCorruptionError(
+                    self.path, f"paper-trading history record {index} is invalid"
+                ) from error
         return decisions
 
     def save(self, decisions: list[PaperDecision]) -> None:
+        if self.path.exists():
+            self.load()
         self.path.parent.mkdir(parents=True, exist_ok=True)
         temporary = self.path.with_suffix(f"{self.path.suffix}.tmp")
         temporary.write_text(
@@ -60,7 +84,12 @@ class PaperTradingRecorder:
         temporary.replace(self.path)
 
     def record(self, decision: StrategyDecision) -> PaperDecision | None:
-        paper_decision = PaperDecision.from_strategy_decision(decision, self.run_id)
+        paper_decision = PaperDecision.from_strategy_decision(
+            decision,
+            self.run_id,
+            decision_id=self.id_factory(),
+            recorded_at=self.clock(),
+        )
         decisions = self.load()
         if self._is_duplicate(paper_decision, decisions):
             return None
@@ -98,7 +127,7 @@ class PaperTradingRecorder:
             self.calculate_outcome(
                 decision,
                 resolved_yes,
-                resolved_at=datetime.now(timezone.utc).isoformat(),
+                resolved_at=self.clock().isoformat(),
             )
             self.save(decisions)
             return decision
@@ -110,27 +139,50 @@ class PaperTradingRecorder:
         resolved_yes: bool,
         resolved_at: str | None = None,
     ) -> PaperDecision:
-        """Apply binary-market settlement math to a paper decision in memory."""
+        """Settle a binary contract using ``position_size`` as capital staked."""
         decision.resolved_yes = resolved_yes
         if resolved_at is not None:
             decision.resolved_at = resolved_at
-        if decision.decision == StrategyAction.BUY_YES.value:
-            won = resolved_yes
-            decision.profit_loss = (
-                decision.position_size * (1 - decision.market_probability)
-                if won
-                else -decision.position_size * decision.market_probability
-            )
-        elif decision.decision == StrategyAction.BUY_NO.value:
-            won = not resolved_yes
-            decision.profit_loss = (
-                decision.position_size * decision.market_probability
-                if won
-                else -decision.position_size * (1 - decision.market_probability)
-            )
-        else:
+
+        if decision.decision not in {
+            StrategyAction.BUY_YES.value,
+            StrategyAction.BUY_NO.value,
+        }:
             decision.profit_loss = 0.0
             decision.result = "IGNORED"
             return decision
+
+        yes_price = decision.market_probability
+        stake = decision.position_size
+        if (
+            not isinstance(yes_price, (int, float))
+            or isinstance(yes_price, bool)
+            or not math.isfinite(yes_price)
+            or not 0.0 < yes_price < 1.0
+            or not isinstance(stake, (int, float))
+            or isinstance(stake, bool)
+            or not math.isfinite(stake)
+            or stake <= 0.0
+        ):
+            decision.profit_loss = 0.0
+            decision.result = "INVALID"
+            return decision
+
+        selected_price = (
+            yes_price
+            if decision.decision == StrategyAction.BUY_YES.value
+            else 1.0 - yes_price
+        )
+
+        won = (
+            resolved_yes
+            if decision.decision == StrategyAction.BUY_YES.value
+            else not resolved_yes
+        )
+        decision.profit_loss = (
+            stake * (1.0 / selected_price - 1.0)
+            if won
+            else -stake
+        )
         decision.result = "WIN" if won else "LOSS"
         return decision

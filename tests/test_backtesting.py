@@ -1,6 +1,5 @@
+# File-Version: 1.0.1
 """Tests for chronological paper-decision backtesting."""
-
-import json
 
 import pytest
 
@@ -44,10 +43,10 @@ def test_replay_calculates_outcomes_summary_and_drawdown():
     assert report.summary.wins == 1
     assert report.summary.losses == 1
     assert report.summary.win_rate == .5
-    assert report.summary.profit_loss == pytest.approx(.02)
+    assert report.summary.profit_loss == pytest.approx(.05)
     assert report.summary.average_edge == pytest.approx(.3)
     assert report.summary.average_confidence == pytest.approx(.85)
-    assert report.maximum_drawdown == pytest.approx(.04)
+    assert report.maximum_drawdown == pytest.approx(.1)
     assert report.performance_by_event_type["LEADERSHIP"].executed_trades == 2
 
 
@@ -77,12 +76,12 @@ def test_empty_dataset_returns_empty_report():
 
 
 def test_invalid_records_do_not_prevent_loading_or_replay(tmp_path):
-    path = tmp_path / "history.json"
-    valid = decision().to_dict()
-    path.write_text(json.dumps([{"id": "incomplete"}, "invalid", valid]), encoding="utf-8")
-    recorder = PaperTradingRecorder(path)
+    recorder = PaperTradingRecorder(tmp_path / "history.json")
+    recorder.save([
+        decision(),
+        decision(id="bad-time", timestamp="not-a-date"),
+    ])
     loaded = recorder.load()
-    loaded.append(decision(id="bad-time", timestamp="not-a-date"))
 
     report = BacktestEngine().run(loaded)
 

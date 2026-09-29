@@ -1,3 +1,4 @@
+# File-Version: 1.0.0
 """Portfolio-level safeguards for paper-trading decisions."""
 
 from dataclasses import dataclass, replace
@@ -73,8 +74,11 @@ class PortfolioRiskManager:
             decision.confidence,
             decision.position_size,
         )
-        if not all(math.isfinite(value) for value in values):
-            return RiskCheck(False, "Invalid non-finite opportunity values.", state)
+        if not all(
+            isinstance(value, (int, float)) and math.isfinite(value)
+            for value in values
+        ):
+            return RiskCheck(False, "Invalid or non-finite opportunity values.", state)
         if not 0.0 <= decision.market_probability <= 1.0:
             return RiskCheck(False, "Invalid market probability.", state)
         if not 0.0 <= decision.estimated_probability <= 1.0:

@@ -1,4 +1,4 @@
-# File-Version: 1.0.0
+# File-Version: 1.2.0
 """
 Intelligence pipeline.
 
@@ -7,6 +7,7 @@ of geopolitical events against active Polymarket markets.
 """
 
 from datetime import datetime
+from copy import deepcopy
 import logging
 
 from src.intelligence.classification import EventType
@@ -155,6 +156,14 @@ class IntelligencePipeline:
 
         for classified_market in classified_markets:
 
+            if not classified_market.supported_proposition:
+                logger.info(
+                    "Skipping unsupported market question=%r reason=%s",
+                    classified_market.market.get("question", ""),
+                    classified_market.unsupported_reason,
+                )
+                continue
+
             query = self._query_builder.build(
                 classified_market
             )
@@ -168,70 +177,111 @@ class IntelligencePipeline:
 
             logger.debug("Retrieved %d events", len(events))
 
-            classified_events = []
+            classified_events = self.classify_events(events)
 
-            for event in events:
+            decisions.extend(self._evaluate_classified_events(
+                classified_market, classified_events,
+            ))
 
-                event = self._event_classifier.classify(event)
-                event = self._outcome_classifier.classify(event)
+        return self._finish(decisions)
 
-                logger.debug(
-                    "Classified event title=%r countries=%s actors=%s "
-                    "event_type=%s outcome=%s",
-                    event.title,
-                    event.countries,
-                    event.actors,
-                    event.event_type.name,
-                    event.outcome.name,
+    def classify_events(
+        self,
+        events: list[GeoPoliticalEvent],
+    ) -> tuple[GeoPoliticalEvent, ...]:
+        """Classify market-independent event features once for safe replay reuse."""
+        classified_events = []
+        for raw_event in events:
+            event = self._event_classifier.classify(deepcopy(raw_event))
+            event = self._outcome_classifier.classify(event)
+
+            logger.debug(
+                "Classified event title=%r countries=%s actors=%s "
+                "event_type=%s outcome=%s",
+                event.title,
+                event.countries,
+                event.actors,
+                event.event_type.name,
+                event.outcome.name,
+            )
+            classified_events.append(event)
+        return tuple(classified_events)
+
+    def run_classified_events(
+        self,
+        markets: list[dict],
+        classified_events: tuple[GeoPoliticalEvent, ...],
+    ) -> list[StrategyDecision]:
+        """Evaluate a shared immutable event view without repeating classification."""
+        decisions: list[StrategyDecision] = []
+        for market in markets:
+            classified_market = self._market_classifier.classify(market)
+            if not classified_market.supported_proposition:
+                logger.info(
+                    "Skipping unsupported market question=%r reason=%s",
+                    classified_market.market.get("question", ""),
+                    classified_market.unsupported_reason,
                 )
-
-                if self._is_relevant(
-                    event,
-                    classified_market,
-                ):
-                    classified_events.append(event)
-
-            logger.debug("Retained %d relevant events", len(classified_events))
-
-            scored_events = score_events(
-                classified_events,
+                continue
+            decisions.extend(self._evaluate_classified_events(
                 classified_market,
+                [deepcopy(event) for event in classified_events],
+            ))
+        return self._finish(decisions)
+
+    def _evaluate_classified_events(
+        self,
+        classified_market,
+        events: list[GeoPoliticalEvent] | tuple[GeoPoliticalEvent, ...],
+    ) -> list[StrategyDecision]:
+        if not classified_market.supported_proposition:
+            return []
+
+        classified_events = []
+        decisions: list[StrategyDecision] = []
+        for event in events:
+
+            if self._is_relevant(event, classified_market):
+                classified_events.append(event)
+
+        logger.debug("Retained %d relevant events", len(classified_events))
+
+        scored_events = score_events(classified_events, classified_market)
+
+        logger.debug("Scored %d events", len(scored_events))
+
+        for scored_event in scored_events[:5]:
+
+            logger.debug(
+                "Top event score=%d title=%r countries=%s actors=%s "
+                "event_type=%s",
+                scored_event.score,
+                scored_event.event.title,
+                scored_event.event.countries,
+                scored_event.event.actors,
+                scored_event.event.event_type.name,
             )
 
-            logger.debug("Scored %d events", len(scored_events))
+        for scored_event in scored_events:
 
-            for scored_event in scored_events[:5]:
+            opportunities = find_matching_markets(scored_event, [classified_market])
 
-                logger.debug(
-                    "Top event score=%d title=%r countries=%s actors=%s "
-                    "event_type=%s",
-                    scored_event.score,
-                    scored_event.event.title,
-                    scored_event.event.countries,
-                    scored_event.event.actors,
-                    scored_event.event.event_type.name,
-                )
+            logger.debug("Found %d market matches", len(opportunities))
 
-            for scored_event in scored_events:
+            for opportunity in opportunities:
 
-                opportunities = find_matching_markets(
-                    scored_event,
-                    [classified_market],
-                )
+                decision = self._strategy_engine.evaluate(opportunity)
+                if self._paper_trader is not None:
+                    decision = self._portfolio_risk.apply(
+                        decision, self._paper_trader.load(),
+                    )
+                decisions.append(decision)
+                if self._paper_trader is not None:
+                    self._paper_trader.record(decision)
+        return decisions
 
-                logger.debug("Found %d market matches", len(opportunities))
-
-                for opportunity in opportunities:
-
-                    decision = self._strategy_engine.evaluate(opportunity)
-                    if self._paper_trader is not None:
-                        decision = self._portfolio_risk.apply(
-                            decision,
-                            self._paper_trader.load(),
-                        )
-                    decisions.append(decision)
-                    if self._paper_trader is not None:
-                        self._paper_trader.record(decision)
+    @staticmethod
+    def _finish(decisions: list[StrategyDecision]) -> list[StrategyDecision]:
 
         decisions.sort(
             key=lambda decision: (

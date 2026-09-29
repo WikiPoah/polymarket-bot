@@ -1,0 +1,116 @@
+{
+  "file_version": "1.0.0",
+  "as_of": "2026-01-10T12:00:00+00:00",
+  "markets": [
+    {
+      "id": "demo-xi-leadership",
+      "question": "Will Xi Jinping be removed from power before 2027?",
+      "outcomes": "[\"Yes\", \"No\"]",
+      "outcomePrices": "[\"0.40\", \"0.60\"]",
+      "active": true,
+      "closed": false
+    },
+    {
+      "id": "demo-taiwan-invasion",
+      "question": "Will China invade Taiwan before 2027?",
+      "outcomes": "[\"Yes\", \"No\"]",
+      "outcomePrices": "[\"0.87\", \"0.13\"]",
+      "active": true,
+      "closed": false
+    },
+    {
+      "id": "demo-negated-market",
+      "question": "Will China not invade Taiwan before 2027?",
+      "outcomes": "[\"Yes\", \"No\"]",
+      "outcomePrices": "[\"0.55\", \"0.45\"]",
+      "active": true,
+      "closed": false
+    },
+    {
+      "id": "demo-football-market",
+      "question": "Will Manchester United win its next match?",
+      "outcomes": "[\"Yes\", \"No\"]",
+      "outcomePrices": "[\"0.52\", \"0.48\"]",
+      "sportsMarketType": "moneyline",
+      "active": true,
+      "closed": false
+    }
+  ],
+  "evidence": [
+    {
+      "title": "Xi Jinping faces leadership challenge and calls to step down",
+      "summary": "Senior CCP officials opened a leadership succession process in China.",
+      "source": "BBC World",
+      "publisher": "BBC",
+      "source_url": "https://demo.invalid/bbc/xi-leadership-primary",
+      "published_at": "2026-01-10T08:00:00+00:00",
+      "category": "politics",
+      "subcategory": "leadership",
+      "country": "China",
+      "significance": 0.90,
+      "confidence": 0.88,
+      "market_sensitivity": 0.90,
+      "event_cluster_id": "xi-leadership-transition"
+    },
+    {
+      "title": "China leadership challenge develops in Beijing",
+      "summary": "The BBC reports that Xi Jinping is under pressure to step down.",
+      "source": "BBC World",
+      "publisher": "BBC",
+      "source_url": "https://demo.invalid/bbc/xi-leadership-followup",
+      "published_at": "2026-01-10T08:30:00+00:00",
+      "category": "politics",
+      "subcategory": "leadership",
+      "country": "China",
+      "significance": 0.88,
+      "confidence": 0.86,
+      "market_sensitivity": 0.88,
+      "event_cluster_id": "xi-leadership-transition"
+    },
+    {
+      "title": "Independent report confirms China leadership succession talks",
+      "summary": "UN News reports pressure for Xi Jinping to leave office.",
+      "source": "UN News",
+      "publisher": "UN News",
+      "source_url": "https://demo.invalid/un/xi-leadership",
+      "published_at": "2026-01-10T09:00:00+00:00",
+      "category": "politics",
+      "subcategory": "leadership",
+      "country": "China",
+      "significance": 0.85,
+      "confidence": 0.84,
+      "market_sensitivity": 0.85,
+      "event_cluster_id": "xi-leadership-transition"
+    },
+    {
+      "title": "China central bank holds interest rate",
+      "summary": "The economic policy decision leaves benchmark lending rates unchanged.",
+      "source": "GDELT",
+      "publisher": "Reuters",
+      "source_url": "https://demo.invalid/reuters/china-interest-rate",
+      "published_at": "2026-01-10T09:15:00+00:00",
+      "category": "economy",
+      "subcategory": "monetary-policy",
+      "country": "China",
+      "significance": 0.45,
+      "confidence": 0.80,
+      "market_sensitivity": 0.35,
+      "event_cluster_id": "china-interest-rate"
+    },
+    {
+      "title": "China begins invasion mobilization near Taiwan",
+      "summary": "Chinese military forces begin an offensive mobilization near Taiwan.",
+      "source": "GDELT",
+      "publisher": "Reuters",
+      "source_url": "https://demo.invalid/reuters/taiwan-invasion",
+      "published_at": "2026-01-10T10:00:00+00:00",
+      "category": "security",
+      "subcategory": "military",
+      "country": "China",
+      "significance": 0.55,
+      "confidence": 0.55,
+      "market_sensitivity": 0.55,
+      "event_cluster_id": "taiwan-invasion"
+    }
+  ]
+}

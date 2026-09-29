@@ -1,4 +1,4 @@
-# File-Version: 1.2.0
+# File-Version: 1.4.0
 """Tests for dashboard presentation data."""
 
 import json
@@ -6,7 +6,7 @@ import threading
 from urllib.request import urlopen
 
 from src.dashboard.data import DashboardDataBuilder
-from src.dashboard.demo import create_demo_history
+from src.demo import run_demo
 from src.dashboard.server import create_server
 from src.paper_trading.history import PaperTradingRecorder
 from src.paper_trading.models import PaperDecision
@@ -22,7 +22,7 @@ def make_record(**changes):
         evidence_count=2, supporting_sources=["BBC", "GDELT"],
         event_title="Leadership change", event_source="BBC", event_url="url",
         event_type="LEADERSHIP", risk_status="ACCEPTED", risk_reason="",
-        result="WIN", profit_loss=.048,
+        result="WIN", profit_loss=.12,
     )
     values.update(changes)
     return PaperDecision(**values)
@@ -91,6 +91,27 @@ def test_dashboard_empty_state(tmp_path):
     assert data["recent_activity"] == []
 
 
+def test_dashboard_reports_corrupt_storage_without_overwriting_it(tmp_path):
+    history_path = tmp_path / "history.json"
+    status_path = tmp_path / "status.json"
+    history_bytes = b'{"records": [broken'
+    status_bytes = b'{"records": [also-broken'
+    history_path.write_bytes(history_bytes)
+    status_path.write_bytes(status_bytes)
+
+    data = DashboardDataBuilder(
+        PaperTradingRecorder(history_path),
+        SystemStatusStore(status_path),
+    ).build()
+
+    assert data["system"]["health"] == "ERROR"
+    assert len(data["system"]["storage_errors"]) == 2
+    assert "Persistent state is corrupted" in data["system"]["storage_errors"][0]
+    assert data["history"] == []
+    assert history_path.read_bytes() == history_bytes
+    assert status_path.read_bytes() == status_bytes
+
+
 def test_dashboard_reports_system_status_and_freshness(tmp_path):
     store = SystemStatusStore(tmp_path / "status.json")
     store.record(RunStatus(
@@ -124,16 +145,23 @@ def test_dashboard_reports_system_status_and_freshness(tmp_path):
 
 
 def test_demo_history_is_locally_available(tmp_path):
-    path = create_demo_history(tmp_path / "demo.json")
-    data = DashboardDataBuilder(PaperTradingRecorder(path)).build()
-    assert len(data["history"]) == 3
-    assert data["performance"]["executed_trades"] == 3
-    assert data["performance"]["wins"] == 1
+    report = run_demo(output_dir=tmp_path / "demo_run")
+    data = DashboardDataBuilder(
+        PaperTradingRecorder(report.history_path),
+        SystemStatusStore(report.status_path),
+    ).build()
+    assert len(data["history"]) == 2
+    assert data["performance"]["executed_trades"] == 1
+    assert data["performance"]["wins"] == 0
+    assert data["system"]["health"] == "HEALTHY"
 
 
 def test_dashboard_server_loads_demo_history(tmp_path):
-    path = create_demo_history(tmp_path / "demo.json")
-    builder = DashboardDataBuilder(PaperTradingRecorder(path))
+    report = run_demo(output_dir=tmp_path / "demo_run")
+    builder = DashboardDataBuilder(
+        PaperTradingRecorder(report.history_path),
+        SystemStatusStore(report.status_path),
+    )
     server = create_server(builder, port=0)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
@@ -141,8 +169,9 @@ def test_dashboard_server_loads_demo_history(tmp_path):
         host, port = server.server_address
         with urlopen(f"http://{host}:{port}/api/dashboard") as response:
             payload = json.load(response)
-        assert payload["performance"]["total_decisions"] == 3
+        assert payload["performance"]["total_decisions"] == 2
         assert payload["history"]
+        assert payload["system"]["latest_run"]["run_id"] == "offline-demo-run"
     finally:
         server.shutdown()
         server.server_close()
@@ -163,6 +192,7 @@ def test_dashboard_page_escapes_untrusted_values_and_sets_security_headers():
             assert response.headers["Server"] == "PolymarketDashboard"
             assert "object-src 'none'" in response.headers["Content-Security-Policy"]
 
+        assert "n == null ? '—'" in html
         assert "const esc = value" in html
         assert "${esc(x.market_question||'—')}" in html
         assert "${esc(x.supporting_sources.join(', ')||'No supporting sources')}" in html

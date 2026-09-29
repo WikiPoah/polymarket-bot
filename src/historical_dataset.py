@@ -1,4 +1,4 @@
-# File-Version: 1.1.0
+# File-Version: 1.4.0
 """Read-only collectors for reproducible historical backtest datasets."""
 
 from __future__ import annotations
@@ -37,6 +37,7 @@ from src.coverage_probe import (
 from src.intelligence.market_classifier import MarketClassifier
 from src.intelligence.classification import EventType
 from src.intelligence.knowledge import ACTORS, COUNTRIES
+from src.persistence import PersistenceCorruptionError
 from src.paper_trading.historical import (
     HistoricalIntelligenceRecord,
     HistoricalMarketSnapshot,
@@ -219,22 +220,36 @@ class VersionedJsonStore(Generic[T]):
             return []
         try:
             payload = json.loads(self.path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
+        except (OSError, json.JSONDecodeError) as error:
             self.invalid_records = 1
-            return []
-        raw = payload.get("records", []) if isinstance(payload, dict) else []
+            raise PersistenceCorruptionError(
+                self.path, "versioned dataset file is unreadable or malformed"
+            ) from error
+        if not isinstance(payload, dict) or "records" not in payload:
+            self.invalid_records = 1
+            raise PersistenceCorruptionError(
+                self.path, "versioned dataset is missing its records collection"
+            )
+        raw = payload["records"]
         if not isinstance(raw, list):
             self.invalid_records = 1
-            return []
+            raise PersistenceCorruptionError(
+                self.path, "versioned dataset records must be a list"
+            )
         records: list[T] = []
-        for item in raw:
+        for index, item in enumerate(raw):
             try:
                 records.append(self.decoder(item))
-            except (TypeError, ValueError, AttributeError):
+            except (TypeError, ValueError, AttributeError, KeyError) as error:
                 self.invalid_records += 1
+                raise PersistenceCorruptionError(
+                    self.path, f"versioned dataset record {index} is invalid"
+                ) from error
         return records
 
     def save(self, records: list[T]) -> None:
+        if self.path.exists():
+            self.load()
         unique = {self.identity(record): record for record in records}
         _atomic_json(self.path, {
             "version": self.version,
@@ -317,7 +332,9 @@ class HistoricalIntelligenceManifestStore:
     """Frozen provider/query/day plan with separately mutable collection status."""
 
     version = 1
-    valid_statuses = {"pending", "collecting", "split", "complete", "failed", "saturated"}
+    valid_statuses = {
+        "pending", "collecting", "split", "complete", "failed", "saturated", "excluded",
+    }
 
     def __init__(self, path: str | Path) -> None:
         self.path = Path(path)
@@ -337,6 +354,7 @@ class HistoricalIntelligenceManifestStore:
         self, start: datetime, end: datetime,
         providers: tuple[HistoricalIntelligenceProviderSpec, ...],
         window: timedelta = timedelta(days=1),
+        alignment: dict[str, Any] | None = None,
     ) -> list[HistoricalIntelligencePartition]:
         start, end = _utc_range(start, end)
         if window.total_seconds() <= 0 or not providers:
@@ -367,11 +385,47 @@ class HistoricalIntelligenceManifestStore:
             "providers": [asdict(item) for item in providers],
             "partitions": [asdict(item) for item in partitions],
             "plan_sha256": digest,
+            "alignment": dict(alignment or {}),
+            "provider_exclusions": {},
             "collection_status": {
                 item.partition_id: {"status": "pending"} for item in partitions
             },
         })
         return partitions
+
+    def exclude_provider(self, provider: str, reason: str) -> int:
+        """Mark a provider unavailable without altering the frozen partition plan."""
+        reason = reason.strip()
+        if not reason:
+            raise ValueError("provider exclusion requires a reason")
+        payload = json.loads(self.path.read_text(encoding="utf-8"))
+        partitions = self.load_partitions(provider)
+        if not partitions:
+            raise ValueError(f"provider is not present in manifest: {provider}")
+        statuses = payload.setdefault("collection_status", {})
+        changed = 0
+        for partition in partitions:
+            state = statuses.setdefault(partition.partition_id, {})
+            if state.get("status") == "complete":
+                continue
+            state.update({
+                "status": "excluded",
+                "exclusion_reason": reason,
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            })
+            changed += 1
+        payload.setdefault("provider_exclusions", {})[provider] = {
+            "reason": reason,
+            "excluded_at": datetime.now(timezone.utc).isoformat(),
+        }
+        _atomic_json(self.path, payload)
+        return changed
+
+    def provider_exclusion(self, provider: str) -> dict[str, Any] | None:
+        """Return an intentional provider exclusion, if one was recorded."""
+        payload = json.loads(self.path.read_text(encoding="utf-8"))
+        value = payload.get("provider_exclusions", {}).get(provider)
+        return dict(value) if isinstance(value, dict) else None
 
     def load_partitions(self, provider: str | None = None) -> list[HistoricalIntelligencePartition]:
         try:
@@ -411,7 +465,7 @@ class HistoricalIntelligenceManifestStore:
             status = statuses.get(partition.partition_id, {}).get("status", "pending")
             if status == "complete":
                 provider["complete"] += 1
-            elif status in {"failed", "saturated"}:
+            elif status in {"failed", "saturated", "excluded"}:
                 provider["failed"] += 1
             else:
                 provider["pending"] += 1
@@ -448,6 +502,7 @@ def historical_intelligence_status_report(
         provider_statuses = [statuses.get(item.partition_id, {}) for item in partitions]
         completed = sum(item.get("status") == "complete" for item in provider_statuses)
         failed = sum(item.get("status") in {"failed", "saturated"} for item in provider_statuses)
+        excluded = sum(item.get("status") == "excluded" for item in provider_statuses)
         saturated = sum(item.get("status") == "saturated" for item in provider_statuses)
         legacy_truncated = sum(
             bool(item.get("requires_adaptive_split")) for item in provider_statuses
@@ -463,8 +518,10 @@ def historical_intelligence_status_report(
         providers.append({
             "provider": provider, "total_partitions": len(partitions),
             "completed_partitions": completed,
-            "pending_partitions": len(partitions) - completed - failed,
+            "pending_partitions": len(partitions) - completed - failed - excluded,
             "failed_partitions": failed, "records": records.get(provider, 0),
+            "excluded_partitions": excluded,
+            "exclusion": payload.get("provider_exclusions", {}).get(provider),
             "saturated_partitions": saturated,
             "legacy_truncated_partitions": legacy_truncated,
         })
@@ -482,7 +539,10 @@ def historical_intelligence_status_report(
     relief_current = reliefweb_state.get("current_window")
     if relief_current:
         warnings.append(f"ReliefWeb: interrupted partition remains resumable: {relief_current}")
-    if any("403 Client Error" in str(item) for item in reliefweb_state.get("failures", [])):
+    if (
+        manifest.provider_exclusion("ReliefWeb") is None
+        and any("403 Client Error" in str(item) for item in reliefweb_state.get("failures", []))
+    ):
         warnings.append(
             "ReliefWeb: authorization is blocked; set an approved RELIEFWEB_APPNAME before resume"
         )
@@ -722,6 +782,12 @@ class HistoricalMarketUniverseStore(VersionedJsonStore[HistoricalMarketMetadata]
         self, records: list[HistoricalMarketMetadata], report: MarketSelectionReport,
         exclusions: list[dict[str, str]],
     ) -> None:
+        if self.path.exists():
+            self.load()
+            if self.report() is None:
+                raise PersistenceCorruptionError(
+                    self.path, "selected market universe metadata is invalid"
+                )
         unique = {record.market_id: record for record in records}
         _atomic_json(self.path, {
             "version": self.version, "updated_at": datetime.now(timezone.utc).isoformat(),
@@ -909,9 +975,25 @@ class CollectionCheckpoint:
             return {"version": self.version, "markets": {}, "intelligence": {}}
         try:
             value = json.loads(self.path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            return {"version": self.version, "markets": {}, "intelligence": {}}
-        return value if isinstance(value, dict) else {"version": self.version}
+        except (OSError, json.JSONDecodeError) as error:
+            raise PersistenceCorruptionError(
+                self.path, "collection checkpoint is unreadable or malformed"
+            ) from error
+        if not isinstance(value, dict):
+            raise PersistenceCorruptionError(
+                self.path, "collection checkpoint must be a JSON object"
+            )
+        if value.get("version", self.version) != self.version:
+            raise PersistenceCorruptionError(
+                self.path, "collection checkpoint has an unsupported version"
+            )
+        for section_name in ("markets", "intelligence"):
+            if section_name in value and not isinstance(value[section_name], dict):
+                raise PersistenceCorruptionError(
+                    self.path,
+                    f"collection checkpoint section {section_name!r} is invalid",
+                )
+        return value
 
     def section(self, name: str) -> dict[str, Any]:
         value = self.load().get(name, {})
@@ -1797,6 +1879,8 @@ class HistoricalMarketCollector:
 class GDELTIntelligenceCollector:
     """Collect timestamped GDELT articles in bounded, retryable windows."""
 
+    provider = "GDELT"
+
     def __init__(
         self, store: HistoricalIntelligenceDatasetStore,
         http_get: HttpGet = requests.get, timeout: float = REQUEST_TIMEOUT,
@@ -2553,7 +2637,11 @@ class MultiProviderHistoricalIntelligenceCollector:
         self.window = collectors[0].window
 
     def collect(self, start: datetime, end: datetime) -> CollectionResult:
-        totals = [collector.collect(start, end) for collector in self.collectors]
+        totals = [
+            collector.collect(start, end)
+            for collector in self.collectors
+            if self.manifest.provider_exclusion(collector.provider) is None
+        ]
         return CollectionResult(
             sum(item.collected for item in totals), sum(item.added for item in totals),
             sum(item.duplicates for item in totals), sum(item.incomplete for item in totals),
@@ -2876,6 +2964,7 @@ class ReplayDataset:
     intelligence: tuple[HistoricalIntelligenceRecord, ...]
     skipped_markets: int = 0
     skipped_intelligence: int = 0
+    market_exclusions: dict[str, str] = field(default_factory=dict)
 
     def replay_engine(self) -> HistoricalReplayEngine:
         """Build the unchanged replay engine with converted historical intelligence."""
@@ -2892,12 +2981,28 @@ class HistoricalDatasetReplayAdapter:
     ) -> ReplayDataset:
         snapshots: list[HistoricalMarketSnapshot] = []
         skipped_markets = 0
+        market_exclusions: dict[str, str] = {}
         for market in markets:
             closed = _timestamp(market.closed_at)
             yes_history = market.price_history.get("YES", ())
-            if closed is None or not yes_history:
+            normalized_outcomes = {outcome.strip().upper() for outcome in market.outcomes}
+            if normalized_outcomes != {"YES", "NO"}:
+                market_exclusions[market.market_id] = "non_binary_yes_no_contract"
                 skipped_markets += 1
                 continue
+            if closed is None:
+                market_exclusions[market.market_id] = "invalid_close_timestamp"
+                skipped_markets += 1
+                continue
+            if "YES" not in market.token_ids:
+                market_exclusions[market.market_id] = "missing_yes_token"
+                skipped_markets += 1
+                continue
+            if not yes_history:
+                market_exclusions[market.market_id] = "missing_yes_price_history"
+                skipped_markets += 1
+                continue
+            usable_candles = 0
             resolved_yes = None
             if market.resolution_outcome is not None:
                 resolved_yes = market.resolution_outcome.upper() == "YES"
@@ -2905,6 +3010,7 @@ class HistoricalDatasetReplayAdapter:
                 observed = _timestamp(candle.timestamp)
                 if observed is None or observed >= closed:
                     continue
+                usable_candles += 1
                 snapshots.append(HistoricalMarketSnapshot(
                     market_id=market.market_id, question=market.question,
                     observed_at=observed.isoformat(), yes_price=candle.price,
@@ -2915,6 +3021,9 @@ class HistoricalDatasetReplayAdapter:
                         {"question": market.question}
                     ),
                 ))
+            if not usable_candles:
+                market_exclusions[market.market_id] = "no_pre_close_yes_prices"
+                skipped_markets += 1
         replay_intelligence: list[HistoricalIntelligenceRecord] = []
         skipped_intelligence = 0
         for item in intelligence:
@@ -2926,6 +3035,9 @@ class HistoricalDatasetReplayAdapter:
                     published_at=item.published_at, available_at=item.available_at,
                     category=str(item.metadata.get("category") or "OTHER"),
                     country=item.source_country,
+                    provider=item.source,
+                    publisher=item.source_domain,
+                    record_id=item.record_id,
                 ))
             except (TypeError, ValueError):
                 skipped_intelligence += 1
@@ -2933,7 +3045,7 @@ class HistoricalDatasetReplayAdapter:
         replay_intelligence.sort(key=lambda item: _timestamp(item.published_at))
         return ReplayDataset(
             tuple(snapshots), tuple(replay_intelligence),
-            skipped_markets, skipped_intelligence,
+            skipped_markets, skipped_intelligence, market_exclusions,
         )
 
 
@@ -3068,6 +3180,18 @@ def main() -> None:
         "--intelligence-only", action="store_true",
         help="collect only frozen historical intelligence partitions (useful for pilots/resume)",
     )
+    parser.add_argument(
+        "--initialize-intelligence-manifest", action="store_true",
+        help="create an immutable intelligence manifest without collecting it",
+    )
+    parser.add_argument(
+        "--intelligence-provider", action="append",
+        choices=("GDELT", "ReliefWeb", "Media Cloud"),
+        help="limit manifest creation or collection to a named provider",
+    )
+    parser.add_argument("--aligned-collection-manifest")
+    parser.add_argument("--exclude-provider", choices=("GDELT", "ReliefWeb", "Media Cloud"))
+    parser.add_argument("--exclusion-reason")
     args = parser.parse_args()
     pilot: dict[str, Any] | None = None
     if args.pilot_manifest:
@@ -3150,6 +3274,21 @@ def main() -> None:
     intelligence_manifest = HistoricalIntelligenceManifestStore(
         output / "intelligence_manifest.json",
     )
+    if args.exclude_provider:
+        if not args.exclusion_reason:
+            parser.error("--exclude-provider requires --exclusion-reason")
+        try:
+            changed = intelligence_manifest.exclude_provider(
+                args.exclude_provider, args.exclusion_reason,
+            )
+        except (OSError, ValueError) as error:
+            parser.error(str(error))
+        print(json.dumps({
+            "provider": args.exclude_provider,
+            "excluded_partitions": changed,
+            "reason": args.exclusion_reason,
+        }, indent=2))
+        return
     universe_store = HistoricalMarketUniverseStore(output / "selected_markets.json")
     manifest_store = CollectionManifestStore(output / "collection_manifest.json")
     if args.intelligence_status:
@@ -3205,7 +3344,37 @@ def main() -> None:
         provider_specs.append(HistoricalIntelligenceProviderSpec(
             "Media Cloud", args.media_cloud_query, "mediacloud.indexed_date",
         ))
-    intelligence_manifest.create(start, end, tuple(provider_specs))
+    if args.intelligence_provider and not intelligence_manifest.path.exists():
+        requested = set(args.intelligence_provider)
+        provider_specs = [item for item in provider_specs if item.provider in requested]
+    alignment: dict[str, Any] = {}
+    if args.aligned_collection_manifest:
+        aligned_path = Path(args.aligned_collection_manifest)
+        try:
+            aligned_payload = json.loads(aligned_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as error:
+            parser.error(f"invalid aligned collection manifest: {error}")
+        alignment = {
+            "collection_manifest": str(aligned_path),
+            "universe_sha256": aligned_payload.get("universe_sha256"),
+            "evaluation_start": aligned_payload.get("evaluation_start"),
+            "evaluation_end": aligned_payload.get("evaluation_end"),
+        }
+        if (
+            _timestamp(alignment["evaluation_start"]) != start
+            or _timestamp(alignment["evaluation_end"]) != end
+        ):
+            parser.error("intelligence and aligned collection manifest windows differ")
+    intelligence_manifest.create(
+        start, end, tuple(provider_specs), alignment=alignment,
+    )
+    if args.initialize_intelligence_manifest:
+        print(json.dumps({
+            "manifest": str(intelligence_manifest.path),
+            "providers": [item.provider for item in provider_specs],
+            "alignment": alignment,
+        }, indent=2))
+        return
     gdelt_collector = GDELTIntelligenceCollector(
         intelligence_store, query=args.gdelt_query,
         checkpoint=checkpoint, progress=report,
@@ -3235,6 +3404,12 @@ def main() -> None:
     if media_cloud_collector is not None:
         provider_collectors.insert(1 if pilot is not None else len(provider_collectors),
                                    media_cloud_collector)
+    if args.intelligence_provider:
+        requested = set(args.intelligence_provider)
+        provider_collectors = [
+            collector for collector in provider_collectors
+            if collector.provider in requested
+        ]
     intelligence_collector = MultiProviderHistoricalIntelligenceCollector(
         tuple(provider_collectors), intelligence_manifest,
     )

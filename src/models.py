@@ -1,3 +1,4 @@
+# File-Version: 1.3.0
 """
 Application data models.
 
@@ -54,7 +55,12 @@ class GeoPoliticalEvent:
 
     source_url: str
     published_at: datetime
+    available_at: datetime | None = None
     source: str = ""
+    provider: str = ""
+    publisher: str = ""
+    event_cluster_id: str = ""
+    confirmation_group_id: str = ""
     source_reliability: float = 0.50
     evidence_confidence: float = 0.50
 
@@ -131,3 +137,5 @@ class ClassifiedMarket:
     topics: list[Topic] = field(default_factory=list)
     actors: list[str] = field(default_factory=list)
     countries: list[str] = field(default_factory=list)
+    supported_proposition: bool = False
+    unsupported_reason: str = "Unsupported or ambiguous market proposition."

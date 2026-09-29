@@ -1,9 +1,11 @@
-# File-Version: 1.0.0
+# File-Version: 1.1.1
 """
 Tests for the strategy engine.
 """
 
 from datetime import datetime
+
+import pytest
 
 from src.intelligence.classification import (
     EventType,
@@ -60,6 +62,7 @@ def create_market() -> ClassifiedMarket:
         classified_region=Region.EAST_ASIA,
         countries=["China"],
         actors=["Xi Jinping"],
+        supported_proposition=True,
     )
 
 
@@ -123,16 +126,13 @@ def test_expected_value_ignore():
     assert action == StrategyAction.IGNORE
 
 
-def test_position_sizer():
+def test_position_sizer_uses_edge_magnitude_for_both_sides():
 
     sizer = PositionSizer()
 
-    position = sizer.calculate(
-        edge=0.20,
-        confidence=0.80,
-    )
-
-    assert 0.0 <= position <= 0.10
+    assert sizer.calculate(edge=0.08, confidence=0.80) == pytest.approx(.064)
+    assert sizer.calculate(edge=-0.08, confidence=0.80) == pytest.approx(.064)
+    assert sizer.calculate(edge=0.0, confidence=0.80) == 0.0
 
 
 def test_strong_edge_produces_buy_yes_decision():
@@ -141,6 +141,7 @@ def test_strong_edge_produces_buy_yes_decision():
 
     assert decision.edge > 0.05
     assert decision.action == StrategyAction.BUY_YES
+    assert decision.position_size > 0.0
     assert decision.confidence >= 0.60
     assert decision.reasons[-1].startswith("Accepted: BUY YES")
     assert "Bot estimate" in decision.reasons[0]
@@ -209,3 +210,4 @@ def test_incorrect_market_pricing_produces_buy_no():
     assert decision.market_probability == 0.99
     assert decision.edge < 0.0
     assert decision.action == StrategyAction.BUY_NO
+    assert decision.position_size > 0.0

@@ -1,4 +1,4 @@
-# File-Version: 1.0.0
+# File-Version: 1.1.0
 """
 Strategy engine.
 
@@ -25,6 +25,9 @@ from src.strategy.risk import RiskManager
 class StrategyDecision:
     """
     Represents the output of the strategy engine.
+
+    ``position_size`` is the fraction of portfolio capital staked on the
+    selected side, not the number of prediction-market shares purchased.
     """
 
     opportunity: TradingOpportunity
@@ -32,7 +35,7 @@ class StrategyDecision:
     action: StrategyAction
 
     estimated_probability: float
-    market_probability: float
+    market_probability: float | None
 
     edge: float
     expected_value: float
@@ -89,6 +92,22 @@ class StrategyEngine:
             * intelligence_confidence,
             2,
         )
+
+        if market_probability is None:
+            return StrategyDecision(
+                opportunity=opportunity,
+                action=StrategyAction.IGNORE,
+                estimated_probability=estimated_probability,
+                market_probability=None,
+                edge=0.0,
+                expected_value=0.0,
+                confidence=decision_confidence,
+                position_size=0.0,
+                reasons=[
+                    "Ignored: invalid market probability; no valid tradable "
+                    "YES price was available."
+                ],
+            )
 
         edge, expected_value, proposed_action = (
             self._ev_calculator.calculate(

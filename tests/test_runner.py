@@ -1,8 +1,12 @@
+# File-Version: 1.0.0
 """Tests for automated evaluation and persistent system status."""
 
 from datetime import datetime, timezone
 
-from src.monitoring import SystemStatusStore
+import pytest
+
+from src.monitoring import RunStatus, SystemStatusStore
+from src.persistence import PersistenceCorruptionError
 from threading import Event
 
 from src.runner import EvaluationRunner, EvaluationScheduler
@@ -99,6 +103,33 @@ def test_status_store_empty_state(tmp_path):
     assert store.load() == []
     assert store.latest() is None
     assert store.last_successful() is None
+
+
+def test_corrupt_status_store_raises_and_preserves_original_bytes(tmp_path):
+    path = tmp_path / "status.json"
+    original = b'{"records": [broken'
+    path.write_bytes(original)
+    store = SystemStatusStore(path)
+    status = RunStatus(
+        started_at=fixed_clock().isoformat(),
+        completed_at=fixed_clock().isoformat(),
+        success=True,
+    )
+
+    with pytest.raises(PersistenceCorruptionError, match="system-status file"):
+        store.load()
+    with pytest.raises(PersistenceCorruptionError, match="refusing to overwrite"):
+        store.record(status)
+
+    assert path.read_bytes() == original
+
+
+def test_structurally_invalid_status_store_raises(tmp_path):
+    path = tmp_path / "status.json"
+    path.write_text('{"version": 2, "records": {}}', encoding="utf-8")
+
+    with pytest.raises(PersistenceCorruptionError, match="records must be a list"):
+        SystemStatusStore(path).load()
 
 
 def test_scheduler_stops_gracefully_after_callback():

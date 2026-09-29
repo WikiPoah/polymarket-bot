@@ -1,3 +1,4 @@
+# File-Version: 1.0.0
 """
 Event type keyword mappings.
 """
@@ -8,15 +9,23 @@ from src.intelligence.classification import EventType
 EVENT_KEYWORDS = {
     EventType.LEADERSHIP: [
         "resign",
+        "resigns",
+        "resigned",
         "resignation",
         "step down",
         "steps down",
         "ousted",
         "impeached",
+        "removed",
         "removed from office",
         "removed as",
         "removed from power",
+        "from power",
         "overthrown",
+        "leave office",
+        "leaves office",
+        "left office",
+        "out as",
         "leadership challenge",
         "confidence vote",
         "vote of no confidence",
@@ -25,8 +34,11 @@ EVENT_KEYWORDS = {
 
     EventType.MILITARY_STRIKE: [
         "airstrike",
+        "airstrikes",
         "air strike",
+        "air strikes",
         "missile strike",
+        "missile strikes",
         "bombing",
         "shelling",
         "rocket attack",
@@ -35,7 +47,9 @@ EVENT_KEYWORDS = {
 
     EventType.MILITARY_EXERCISE: [
         "exercise",
+        "exercises",
         "drill",
+        "drills",
         "war game",
         "live-fire",
         "naval exercise",
@@ -43,32 +57,48 @@ EVENT_KEYWORDS = {
 
     EventType.INVASION: [
         "invade",
+        "invades",
+        "invaded",
         "invasion",
+        "invasions",
         "offensive",
         "mobilization",
     ],
 
     EventType.DIPLOMATIC: [
         "meeting",
+        "meetings",
         "summit",
         "talks",
         "negotiation",
         "visit",
+        "visits",
         "agreement",
+        "agreements",
+        "deal",
+        "deals",
     ],
 
     EventType.SANCTIONS: [
         "sanction",
+        "sanctions",
         "embargo",
+        "embargoes",
         "restriction",
+        "restrictions",
         "tariff",
+        "tariffs",
     ],
 
     EventType.ELECTION: [
         "election",
+        "elections",
         "vote",
+        "votes",
         "ballot",
+        "ballots",
         "poll",
+        "polls",
     ],
 
     EventType.ECONOMIC: [

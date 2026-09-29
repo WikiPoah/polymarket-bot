@@ -1,3 +1,4 @@
+# File-Version: 1.0.0
 """
 Market classifier.
 
@@ -6,6 +7,7 @@ ClassifiedMarket objects.
 """
 
 from src.intelligence.classification import EventType, Topic
+from src.intelligence.classifier import contains_keyword
 from src.intelligence.knowledge import (
     ACTORS,
     COUNTRIES,
@@ -28,9 +30,25 @@ ACTOR_COUNTRIES = {
 }
 
 
-LEADERSHIP_ACTORS = set(
-    ACTOR_COUNTRIES.keys()
+NEGATION_EXCEPTIONS = (
+    "if not",
+    "whether or not",
+    "not later than",
+    "no later than",
+    "vote of no confidence",
 )
+
+
+def _has_unsupported_negation(question: str) -> bool:
+    """Detect explicit proposition negation while preserving narrow exceptions."""
+
+    remaining = question
+    for phrase in NEGATION_EXCEPTIONS:
+        remaining = remaining.replace(phrase, " ")
+    return any(
+        contains_keyword(remaining, term)
+        for term in ("not", "never", "no", "without")
+    )
 
 
 class MarketClassifier:
@@ -51,10 +69,7 @@ class MarketClassifier:
             market=market,
         )
 
-        question = market.get(
-            "question",
-            "",
-        ).lower()
+        question = str(market.get("question") or "").lower()
 
         #
         # Event type
@@ -63,7 +78,7 @@ class MarketClassifier:
         for event_type, keywords in EVENT_KEYWORDS.items():
 
             if any(
-                keyword in question
+                contains_keyword(question, keyword)
                 for keyword in keywords
             ):
 
@@ -77,7 +92,7 @@ class MarketClassifier:
         for topic, keywords in TOPIC_KEYWORDS.items():
 
             if any(
-                keyword in question
+                contains_keyword(question, keyword)
                 for keyword in keywords
             ):
 
@@ -91,7 +106,7 @@ class MarketClassifier:
         for actor, aliases in ACTORS.items():
 
             if any(
-                alias.lower() in question
+                contains_keyword(question, alias.lower())
                 for alias in aliases
             ):
 
@@ -105,7 +120,7 @@ class MarketClassifier:
         for country, aliases in COUNTRIES.items():
 
             if any(
-                alias.lower() in question
+                contains_keyword(question, alias.lower())
                 for alias in aliases
             ):
 
@@ -126,20 +141,6 @@ class MarketClassifier:
             ):
 
                 classified.countries.append(country)
-
-        #
-        # Leadership inference
-        #
-
-        if (
-            classified.event_type == EventType.OTHER
-            and any(
-                actor in LEADERSHIP_ACTORS
-                for actor in classified.actors
-            )
-        ):
-
-            classified.event_type = EventType.LEADERSHIP
 
         #
         # If a leadership actor is detected,
@@ -213,5 +214,17 @@ class MarketClassifier:
 
                 classified.classified_region = region
                 break
+
+        if _has_unsupported_negation(question):
+            classified.unsupported_reason = (
+                "Unsupported or ambiguous proposition: explicit negation."
+            )
+        elif classified.event_type == EventType.OTHER:
+            classified.unsupported_reason = (
+                "Unsupported proposition: no recognized geopolitical event intent."
+            )
+        else:
+            classified.supported_proposition = True
+            classified.unsupported_reason = ""
 
         return classified

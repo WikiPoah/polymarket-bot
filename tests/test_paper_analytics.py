@@ -1,3 +1,4 @@
+# File-Version: 1.0.0
 """Tests for paper-trading analytics and calibration."""
 
 from src.paper_trading.analytics import PerformanceAnalytics, format_report
@@ -12,7 +13,7 @@ def decision(**overrides):
         edge=.3, confidence=.85, position_size=.1, evidence_confidence=.9,
         evidence_count=3, supporting_sources=["BBC", "GDELT"],
         event_title="Leadership change", event_source="BBC", event_url="url",
-        event_type="LEADERSHIP", result="WIN", resolved_yes=True, profit_loss=.06,
+        event_type="LEADERSHIP", result="WIN", resolved_yes=True, profit_loss=.15,
     )
     values.update(overrides)
     return PaperDecision(**values)
@@ -22,13 +23,14 @@ def test_analytics_calculations_and_breakdowns():
     report = PerformanceAnalytics().analyze([
         decision(),
         decision(id="2", event_type="ECONOMIC", confidence=.5,
-                 evidence_count=1, result="LOSS", profit_loss=-.04),
+                 evidence_count=1, result="LOSS", profit_loss=-.1),
         decision(id="3", decision="IGNORE", result=None, profit_loss=0.0),
     ])
     assert report.summary.total_decisions == 3
     assert report.summary.executed_trades == 2
     assert report.summary.wins == 1
     assert report.summary.losses == 1
+    assert report.summary.profit_loss == pytest.approx(.05)
     assert report.summary.average_edge == .3
     assert set(report.by_event_type) == {"LEADERSHIP", "ECONOMIC"}
     assert "HIGH" in report.by_confidence
@@ -39,7 +41,7 @@ def test_analytics_calculations_and_breakdowns():
 def test_calibration_compares_predicted_and_actual():
     report = PerformanceAnalytics().analyze([
         decision(),
-        decision(id="2", estimated_probability=.3, result="LOSS", profit_loss=-.03),
+        decision(id="2", estimated_probability=.3, result="LOSS", profit_loss=-.1),
     ])
     assert len(report.calibration) == 2
     assert report.brier_score == pytest.approx(.09)

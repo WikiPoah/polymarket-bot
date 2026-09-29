@@ -1,4 +1,4 @@
-# File-Version: 1.1.0
+# File-Version: 1.3.0
 
 # Virtual environment
 .venv/
@@ -29,6 +29,7 @@ htmlcov/
 # Live paper-trading runtime output
 data/paper_trading_history.json
 data/system_status.json
+data/demo_run/
 data/historical_markets.json
 data/historical_intelligence.json
 
@@ -36,6 +37,7 @@ data/historical_intelligence.json
 data/historical_dataset/
 data/historical_selection*/
 data/historical_intelligence_event_pilot*/
+data/historical_intelligence_mediacloud_aligned/
 data/audits/
 
 # Interrupted writes and collection process output
